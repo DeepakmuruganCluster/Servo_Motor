@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TITAN Servo Sizing — Login</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --titan: #0f172a;
+      --blue: #1d4ed8;
+      --blue-dk: #1e40af;
+      --bg: #f1f5f9;
+      --surface: #ffffff;
+      --border: #e2e8f0;
+      --text: #111827;
+      --muted: #6b7280;
+      --danger: #dc2626;
+      --danger-lt: #fee2e2;
+      --radius: 14px;
+    }
+    html, body {
+      min-height: 100vh;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    /* Logo / brand strip */
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 36px;
+    }
+    .brand-icon {
+      width: 52px;
+      height: 52px;
+      background: var(--titan);
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .brand-text h1 {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      color: var(--titan);
+    }
+    .brand-text p {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    /* Card */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: 0 20px 60px rgba(15, 23, 42, .08);
+      padding: 40px 36px;
+      width: 100%;
+      max-width: 420px;
+    }
+    .card h2 {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--titan);
+      margin-bottom: 6px;
+    }
+    .card .sub {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 28px;
+    }
+
+    /* Fields */
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 18px;
+    }
+    .field label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .field input {
+      padding: 11px 14px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color .15s, box-shadow .15s;
+      background: var(--surface);
+      color: var(--text);
+    }
+    .field input:focus {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgba(29, 78, 216, .1);
+    }
+
+    /* Error */
+    .error-box {
+      background: var(--danger-lt);
+      border: 1px solid #fca5a5;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 13px;
+      color: var(--danger);
+      margin-bottom: 18px;
+      display: none;
+    }
+    .error-box.visible { display: block; }
+
+    /* Submit */
+    .btn-login {
+      width: 100%;
+      padding: 13px;
+      background: var(--blue);
+      color: #fff;
+      border: none;
+      border-radius: 9px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background .15s, transform .1s;
+      margin-top: 4px;
+    }
+    .btn-login:hover { background: var(--blue-dk); }
+    .btn-login:active { transform: scale(.98); }
+
+    footer {
+      margin-top: 32px;
+      font-size: 11px;
+      color: var(--muted);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="brand">
+    <div class="brand-icon">
+      <svg width="30" height="30" viewBox="0 0 32 32" fill="none">
+        <rect x="4" y="14" width="24" height="4" rx="2" fill="#fff"/>
+        <rect x="10" y="7" width="4" height="18" rx="2" fill="#fff"/>
+        <rect x="18" y="7" width="4" height="18" rx="2" fill="#fff"/>
+      </svg>
+    </div>
+    <div class="brand-text">
+      <h1>TITAN</h1>
+      <p>Servo Sizing Suite</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Sign in</h2>
+    <p class="sub">Access the servo motor sizing tools.</p>
+
+    <div class="error-box" id="error-box">Incorrect email or password. Please try again.</div>
+
+    <div class="field">
+      <label for="inp-email">Email</label>
+      <input id="inp-email" type="email" placeholder="you@example.com" autocomplete="email" />
+    </div>
+    <div class="field">
+      <label for="inp-password">Password</label>
+      <input id="inp-password" type="password" placeholder="••••••••" autocomplete="current-password" />
+    </div>
+
+    <button class="btn-login" id="btn-login">Sign in</button>
+  </div>
+
+  <footer>Titan Machine Building &amp; Automation · Servo Sizing Suite · v3.0</footer>
+
+  <script>
+    const USERS = [
+      { email: 'info@clustervise.com', password: 'Admin!2026' },
+    ];
+
+    function attempt() {
+      const email    = document.getElementById('inp-email').value.trim().toLowerCase();
+      const password = document.getElementById('inp-password').value;
+      const ok = USERS.some(u => u.email === email && u.password === password);
+      if (ok) {
+        sessionStorage.setItem('titan_auth', '1');
+        window.location.replace('index.html');
+      } else {
+        document.getElementById('error-box').classList.add('visible');
+        document.getElementById('inp-password').value = '';
+        document.getElementById('inp-password').focus();
+      }
+    }
+
+    document.getElementById('btn-login').addEventListener('click', attempt);
+    document.getElementById('inp-password').addEventListener('keydown', e => {
+      if (e.key === 'Enter') attempt();
+    });
+    document.getElementById('inp-email').addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('inp-password').focus();
+    });
+  </script>
+</body>
+</html>

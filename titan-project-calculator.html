@@ -332,30 +332,71 @@
       ════════════════════════════════════════════ -->
       <section class="card" style="grid-column: 1 / -1;">
         <h2>Primary Results</h2>
-        <div class="section-block">
-          <h3>Ball screw shaft</h3>
-          <div class="metric-grid">
-            <div class="metric-card"><span>Linear speed</span><strong id="out_vmax">—</strong></div>
-            <div class="metric-card"><span>Acceleration</span><strong id="out_amax">—</strong></div>
-            <div class="metric-card"><span>Torque at ball screw shaft</span><strong id="out_tload">—</strong></div>
-            <div class="metric-card"><span>Peak ball screw torque</span><strong id="out_tpeak_bs">—</strong></div>
-            <div class="metric-card"><span>Ball screw speed</span><strong id="out_nscrew">—</strong></div>
-            <div class="metric-card"><span>Axial load</span><strong id="out_faxial">—</strong></div>
-            <div class="metric-card"><span>Acceleration torque</span><strong id="out_taccel">—</strong></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+          <div class="section-block">
+            <h3>Ball screw shaft</h3>
+            <table style="border-collapse:collapse;width:100%;">
+              <thead><tr style="background:var(--surface-strong);">
+                <th style="padding:8px 12px;text-align:left;font-size:12px;color:var(--muted);font-weight:600;">Parameter</th>
+                <th style="padding:8px 12px;text-align:right;font-size:12px;color:var(--muted);font-weight:600;">Value</th>
+                <th style="padding:8px 12px;text-align:left;font-size:12px;color:var(--muted);font-weight:600;">Unit</th>
+              </tr></thead>
+              <tbody>
+                <tr style="border-top:1px solid var(--border);">
+                  <td style="padding:9px 12px;font-size:13px;">Torque required</td>
+                  <td style="padding:9px 12px;font-size:15px;font-weight:700;text-align:right;font-family:monospace;" id="out_tpeak_bs">—</td>
+                  <td style="padding:9px 12px;font-size:12px;color:var(--muted);">Nm</td>
+                </tr>
+                <tr style="border-top:1px solid var(--border);background:var(--surface-strong);">
+                  <td style="padding:9px 12px;font-size:13px;">Speed required</td>
+                  <td style="padding:9px 12px;font-size:15px;font-weight:700;text-align:right;font-family:monospace;" id="out_nscrew">—</td>
+                  <td style="padding:9px 12px;font-size:12px;color:var(--muted);">rpm</td>
+                </tr>
+                <tr style="border-top:1px solid var(--border);">
+                  <td style="padding:9px 12px;font-size:13px;">Linear speed</td>
+                  <td style="padding:9px 12px;font-size:15px;font-weight:700;text-align:right;font-family:monospace;" id="out_vmax">—</td>
+                  <td style="padding:9px 12px;font-size:12px;color:var(--muted);">mm/s</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
-        </div>
-        <div class="section-block">
-          <h3>Motor shaft</h3>
-          <div class="metric-grid">
-            <div class="metric-card"><span>Speed required</span><strong id="out_nmotor">—</strong></div>
-            <div class="metric-card"><span>Peak torque required</span><strong id="out_tpeak_motor">—</strong></div>
-            <div class="metric-card"><span>RMS torque required</span><strong id="out_trms">—</strong></div>
-            <div class="metric-card"><span>Reflected load inertia</span><strong id="out_inertia">—</strong></div>
-            <div class="metric-card"><span>Inertia ratio</span><strong id="out_inertia_ratio">—</strong></div>
+          <div class="section-block">
+            <h3>Motor shaft</h3>
+            <table style="border-collapse:collapse;width:100%;">
+              <thead><tr style="background:var(--surface-strong);">
+                <th style="padding:8px 12px;text-align:left;font-size:12px;color:var(--muted);font-weight:600;">Parameter</th>
+                <th style="padding:8px 12px;text-align:right;font-size:12px;color:var(--muted);font-weight:600;">Value</th>
+                <th style="padding:8px 12px;text-align:left;font-size:12px;color:var(--muted);font-weight:600;">Unit</th>
+              </tr></thead>
+              <tbody>
+                <tr style="border-top:1px solid var(--border);">
+                  <td style="padding:9px 12px;font-size:13px;">Torque required</td>
+                  <td style="padding:9px 12px;font-size:15px;font-weight:700;text-align:right;font-family:monospace;" id="out_tpeak_motor">—</td>
+                  <td style="padding:9px 12px;font-size:12px;color:var(--muted);">Nm</td>
+                </tr>
+                <tr style="border-top:1px solid var(--border);background:var(--surface-strong);">
+                  <td style="padding:9px 12px;font-size:13px;">Speed required</td>
+                  <td style="padding:9px 12px;font-size:15px;font-weight:700;text-align:right;font-family:monospace;" id="out_nmotor">—</td>
+                  <td style="padding:9px 12px;font-size:12px;color:var(--muted);">rpm</td>
+                </tr>
+                <tr style="border-top:1px solid var(--border);">
+                  <td style="padding:9px 12px;font-size:13px;">RMS torque</td>
+                  <td style="padding:9px 12px;font-size:15px;font-weight:700;text-align:right;font-family:monospace;" id="out_trms">—</td>
+                  <td style="padding:9px 12px;font-size:12px;color:var(--muted);">Nm</td>
+                </tr>
+                <tr style="border-top:1px solid var(--border);background:var(--surface-strong);">
+                  <td style="padding:9px 12px;font-size:13px;">Reflected inertia</td>
+                  <td style="padding:9px 12px;font-size:15px;font-weight:700;text-align:right;font-family:monospace;" id="out_inertia">—</td>
+                  <td style="padding:9px 12px;font-size:12px;color:var(--muted);">kg·mm²</td>
+                </tr>
+                <tr style="border-top:1px solid var(--border);">
+                  <td style="padding:9px 12px;font-size:13px;">Inertia ratio</td>
+                  <td style="padding:9px 12px;font-size:15px;font-weight:700;text-align:right;font-family:monospace;" id="out_inertia_ratio">—</td>
+                  <td style="padding:9px 12px;font-size:12px;color:var(--muted);"></td>
+                </tr>
+              </tbody>
+            </table>
           </div>
-        </div>
-        <div class="info-box">
-          <strong>Note:</strong> Peak torque includes safety factor and drive no-load torque. RMS torque uses duty cycle from operating conditions above.
         </div>
       </section>
 
@@ -396,28 +437,6 @@
         </table>
       </section>
 
-      <!-- ═══════════════════════════════════════
-           FULL WIDTH — MOTION PROFILE
-      ════════════════════════════════════════════ -->
-      <section class="card" style="grid-column: 1 / -1;">
-        <h2>Motion Profile</h2>
-        <canvas id="motion-profile-canvas" style="width:100%;display:block;"></canvas>
-        <div id="motion-profile-legend" style="display:flex;gap:20px;flex-wrap:wrap;margin-top:14px;font-size:12px;color:var(--muted);align-items:center;"></div>
-      </section>
-
-      <!-- ═══════════════════════════════════════
-           FULL WIDTH — REPORT
-      ════════════════════════════════════════════ -->
-      <section class="card" style="grid-column: 1 / -1;" id="report-section">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px;">
-          <h2 style="margin:0;">Report</h2>
-          <button id="print-report-btn" type="button" class="button secondary" style="display:flex;align-items:center;gap:6px;">
-            <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
-            Print / Save PDF
-          </button>
-        </div>
-        <div id="report-body"></div>
-      </section>
 
     </div>
   </main>

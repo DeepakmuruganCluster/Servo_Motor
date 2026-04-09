@@ -472,26 +472,43 @@ function renderGearboxSuggestion(result) {
     };
   });
 
-  const best = rows.reduce((bestRow, current) => current.score < bestRow.score ? current : bestRow, rows[0]);
-  let note = `<strong>Suggested gearbox ratio:</strong> ${best.ratio}:1 (total drive ${(state.pk_ratio * best.ratio).toFixed(1)}:1), motor torque ${best.motorTorque.toFixed(2)} Nm at ${Math.round(best.motorSpeed)} rpm`;
-  if (selectedMotor) {
-    note += ` using <strong>${selectedMotor.pn}</strong>.`;
-    const direct = rows.find(r => r.ratio === 1);
-    if (direct && direct.speedOk && direct.torqueOk) {
-      note += ' Direct-drive (1:1) remains viable for the selected motor.';
-    }
+  const viable = rows.filter(r => r.speedOk && r.torqueOk);
+  const best = viable.length
+    ? viable.reduce((b, c) => c.score < b.score ? c : b, viable[0])
+    : rows.reduce((b, c) => c.score < b.score ? c : b, rows[0]);
+
+  const direct = rows.find(r => r.ratio === 1);
+  const directTorque = direct ? direct.motorTorque : best.motorTorque;
+  const saving = best.ratio > 1
+    ? Math.round((1 - best.motorTorque / directTorque) * 100)
+    : 0;
+
+  let note = `<strong>Recommended ratio: ${best.ratio}:1</strong> — motor torque ${best.motorTorque.toFixed(2)} Nm at ${Math.round(best.motorSpeed)} rpm`;
+  if (selectedMotor) note += ` (${selectedMotor.pn})`;
+  if (saving > 0) {
+    note += `.<br><span style="color:var(--success)">&#10003; ${saving}% torque reduction vs direct drive — enables a smaller, lower-cost motor.</span>`;
+  } else {
+    note += '. Direct drive is optimal for this load.';
   }
   suggestion.innerHTML = note;
 
   tbody.innerHTML = rows.map(row => {
-    const badge = row.speedOk && row.torqueOk ? 'badge-ok' : 'badge-fail';
+    const isBest = row.ratio === best.ratio;
+    const viable = row.speedOk && row.torqueOk;
+    const badge = viable ? 'badge-ok' : 'badge-fail';
+    const saving = row.ratio > 1 && directTorque > 0
+      ? Math.round((1 - row.motorTorque / directTorque) * 100)
+      : 0;
+    const savingTxt = saving > 0
+      ? `<span style="color:var(--success);font-weight:600">&#8595; ${saving}% smaller motor</span>`
+      : `<span style="color:var(--muted)">baseline</span>`;
     return `
-      <tr class="${row.ratio === best.ratio ? 'selected' : ''}">
-        <td>${row.ratio}:1</td>
+      <tr class="${isBest ? 'selected' : ''}">
+        <td>${isBest ? '&#9733; ' : ''}${row.ratio}:1</td>
         <td class="mono">${row.motorTorque.toFixed(2)} Nm</td>
         <td class="mono">${Math.round(row.motorSpeed)} rpm</td>
-        <td class="mono">${row.score.toFixed(1)}</td>
-        <td><span class="badge ${badge}">${row.speedOk && row.torqueOk ? 'Viable' : 'Not viable'}</span></td>
+        <td>${savingTxt}</td>
+        <td><span class="badge ${badge}">${viable ? 'Viable' : 'Not viable'}</span></td>
       </tr>`;
   }).join('');
 }

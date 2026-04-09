@@ -6,6 +6,16 @@
   <title>ClusterVise — Application Calculator</title>
   <link rel="stylesheet" href="servo-app.css" />
   <style>
+    @media print {
+      header, .nav-links, #add-step-button, #download-template-button,
+      #excel-file-input, #print-report-btn, .remove-step,
+      #project-context-banner, .button { display: none !important; }
+      body { background: #fff; }
+      .card { box-shadow: none; border: 1px solid #ddd; page-break-inside: avoid; margin-bottom: 16px; }
+      .page-grid { display: block; }
+    }
+  </style>
+  <style>
     /* Operating conditions — compact horizontal strip */
     .cond-grid {
       display: grid;
@@ -379,6 +389,29 @@
           <thead><tr><th>Criterion</th><th>Actual</th><th>Capacity</th><th>Status</th><th>Notes</th></tr></thead>
           <tbody id="verification-body"></tbody>
         </table>
+      </section>
+
+      <!-- ═══════════════════════════════════════
+           FULL WIDTH — MOTION PROFILE
+      ════════════════════════════════════════════ -->
+      <section class="card" style="grid-column: 1 / -1;">
+        <h2>Motion Profile</h2>
+        <canvas id="motion-profile-canvas" style="width:100%;display:block;"></canvas>
+        <div id="motion-profile-legend" style="display:flex;gap:20px;flex-wrap:wrap;margin-top:14px;font-size:12px;color:var(--muted);align-items:center;"></div>
+      </section>
+
+      <!-- ═══════════════════════════════════════
+           FULL WIDTH — REPORT
+      ════════════════════════════════════════════ -->
+      <section class="card" style="grid-column: 1 / -1;" id="report-section">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px;">
+          <h2 style="margin:0;">Report</h2>
+          <button id="print-report-btn" type="button" class="button secondary" style="display:flex;align-items:center;gap:6px;">
+            <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
+            Print / Save PDF
+          </button>
+        </div>
+        <div id="report-body"></div>
       </section>
 
     </div>

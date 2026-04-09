@@ -296,6 +296,8 @@ function render() {
   renderBestMotorSuggestion(result);
   renderGearboxSuggestion(result);
   renderVerification(result);
+  renderMotionProfileChart();
+  renderReport(result);
 }
 
 function renderProjectSummary() {
@@ -1016,6 +1018,297 @@ function injectProjectContextBanner() {
   banner.appendChild(label);
   banner.appendChild(saveBtn);
   document.body.insertBefore(banner, document.body.firstChild);
+}
+
+/* ─────────────────────────────────────────────
+   MOTION PROFILE CHART
+   Trapezoidal velocity (mm/s) across all steps.
+   acc_pct is now a shared project-level value.
+───────────────────────────────────────────── */
+function renderMotionProfileChart() {
+  const canvas = document.getElementById('motion-profile-canvas');
+  const legend = document.getElementById('motion-profile-legend');
+  if (!canvas) return;
+
+  const dpr  = window.devicePixelRatio || 1;
+  const W    = canvas.parentElement ? canvas.parentElement.clientWidth - 48 : 860;
+  const H    = 260;
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+
+  const PAD = { top: 28, right: 24, bottom: 52, left: 70 };
+  const pw  = W - PAD.left - PAD.right;
+  const ph  = H - PAD.top  - PAD.bottom;
+
+  // Build segments ─────────────────────────────
+  const COLORS = ['#1d4ed8','#16a34a','#b45309','#9333ea','#dc2626','#0891b2','#c2410c','#15803d'];
+  const segs = [];
+  let totalT = 0, maxV = 0;
+
+  state.steps.forEach((step, i) => {
+    const avail   = Math.max(step.move_time - state.dwell_time, 0.01);
+    const t_acc   = Math.min(avail / 2, avail * (state.acc_pct / 100));
+    const t_dec   = t_acc;
+    const t_const = Math.max(0, avail - t_acc - t_dec);
+    const Vmax    = avail > t_acc ? (step.stroke / avail) : 0;   // mm/s simplified
+    maxV = Math.max(maxV, Vmax);
+    segs.push({
+      label: step.label || `Step ${i + 1}`,
+      t_acc, t_const, t_dec,
+      dwell: state.dwell_time,
+      Vmax,
+      color: COLORS[i % COLORS.length],
+    });
+    totalT += t_acc + t_const + t_dec + state.dwell_time;
+  });
+
+  if (maxV === 0) maxV = 1;
+  const tX = t => PAD.left + (t / totalT) * pw;
+  const vY = v => PAD.top  + ph - (v / maxV) * ph;
+
+  // Grid ────────────────────────────────────────
+  ctx.strokeStyle = '#e5e7eb';
+  ctx.lineWidth   = 1;
+  ctx.fillStyle   = '#6b7280';
+  ctx.font        = '11px Inter,system-ui,sans-serif';
+  ctx.textAlign   = 'right';
+  const vTicks = 5;
+  for (let k = 0; k <= vTicks; k++) {
+    const y = PAD.top + ph - (k / vTicks) * ph;
+    ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + pw, y); ctx.stroke();
+    ctx.fillText(((k / vTicks) * maxV).toFixed(0), PAD.left - 8, y + 4);
+  }
+
+  // Y-axis label
+  ctx.save();
+  ctx.translate(14, PAD.top + ph / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = 'center';
+  ctx.fillText('Velocity (mm/s)', 0, 0);
+  ctx.restore();
+
+  // Phase labels key
+  const phaseY = PAD.top - 10;
+  [['#1d4ed8','Accel'], ['#16a34a','Constant'], ['#b45309','Decel'], ['#9ca3af','Dwell']].forEach(([c, lbl], i) => {
+    ctx.fillStyle = c; ctx.fillRect(PAD.left + i * 100, phaseY, 12, 8);
+    ctx.fillStyle = '#374151'; ctx.textAlign = 'left'; ctx.font = '10px Inter,system-ui,sans-serif';
+    ctx.fillText(lbl, PAD.left + i * 100 + 15, phaseY + 7);
+  });
+
+  // Draw each step ──────────────────────────────
+  let cursor = 0;
+  segs.forEach(seg => {
+    const phases = [
+      { t: seg.t_acc,   v0: 0,        v1: seg.Vmax,  shade: '#3b82f620' },
+      { t: seg.t_const, v0: seg.Vmax, v1: seg.Vmax,  shade: '#22c55e20' },
+      { t: seg.t_dec,   v0: seg.Vmax, v1: 0,         shade: '#f9731620' },
+      { t: seg.dwell,   v0: 0,        v1: 0,         shade: '#e5e7eb40' },
+    ];
+
+    let t = cursor;
+    phases.forEach(ph => {
+      if (ph.t <= 0) return;
+      ctx.beginPath();
+      ctx.moveTo(tX(t),        vY(ph.v0));
+      ctx.lineTo(tX(t + ph.t), vY(ph.v1));
+      ctx.lineTo(tX(t + ph.t), vY(0));
+      ctx.lineTo(tX(t),        vY(0));
+      ctx.closePath();
+      ctx.fillStyle = ph.shade;
+      ctx.fill();
+      t += ph.t;
+    });
+
+    // Outline
+    ctx.beginPath();
+    ctx.moveTo(tX(cursor), vY(0));
+    ctx.lineTo(tX(cursor + seg.t_acc), vY(seg.Vmax));
+    ctx.lineTo(tX(cursor + seg.t_acc + seg.t_const), vY(seg.Vmax));
+    ctx.lineTo(tX(cursor + seg.t_acc + seg.t_const + seg.t_dec), vY(0));
+    ctx.lineTo(tX(cursor + seg.t_acc + seg.t_const + seg.t_dec + seg.dwell), vY(0));
+    ctx.strokeStyle = seg.color;
+    ctx.lineWidth   = 2.5;
+    ctx.stroke();
+
+    // Step label at peak
+    const midT = cursor + seg.t_acc + seg.t_const / 2;
+    if (seg.Vmax > 0) {
+      ctx.fillStyle = seg.color;
+      ctx.font      = 'bold 11px Inter,system-ui,sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(seg.label, tX(midT), vY(seg.Vmax) - 8);
+    }
+
+    cursor += seg.t_acc + seg.t_const + seg.t_dec + seg.dwell;
+  });
+
+  // X-axis ticks ────────────────────────────────
+  ctx.strokeStyle = '#d1d5db'; ctx.lineWidth = 1;
+  const xTicks = Math.min(12, Math.ceil(totalT / 0.25));
+  ctx.fillStyle = '#6b7280'; ctx.font = '10px Inter,system-ui,sans-serif'; ctx.textAlign = 'center';
+  for (let k = 0; k <= xTicks; k++) {
+    const t = (k / xTicks) * totalT;
+    const x = tX(t);
+    ctx.beginPath(); ctx.moveTo(x, PAD.top + ph); ctx.lineTo(x, PAD.top + ph + 5); ctx.stroke();
+    ctx.fillText(t.toFixed(2) + 's', x, PAD.top + ph + 18);
+  }
+  ctx.fillStyle = '#374151'; ctx.textAlign = 'center';
+  ctx.fillText('Time (s)', PAD.left + pw / 2, H - 4);
+
+  // Legend ──────────────────────────────────────
+  if (legend) {
+    const totalCycle = state.steps.reduce((s, st) => s + st.move_time, 0);
+    legend.innerHTML =
+      segs.map(seg => `
+        <span style="display:flex;align-items:center;gap:5px;">
+          <span style="width:12px;height:12px;border-radius:3px;background:${seg.color};display:inline-block;flex-shrink:0;"></span>
+          <span><strong>${seg.label}</strong> — acc ${seg.t_acc.toFixed(2)}s · const ${seg.t_const.toFixed(2)}s · dec ${seg.t_dec.toFixed(2)}s · dwell ${seg.dwell.toFixed(2)}s</span>
+        </span>`).join('') +
+      `<span style="margin-left:auto;font-weight:700;color:var(--text);white-space:nowrap;">Total cycle: ${totalCycle.toFixed(2)} s</span>`;
+  }
+}
+
+/* ─────────────────────────────────────────────
+   REPORT
+───────────────────────────────────────────── */
+function renderReport(result) {
+  const body = document.getElementById('report-body');
+  const btn  = document.getElementById('print-report-btn');
+  if (!body) return;
+
+  const motor = result.selectedMotor;
+  const overallPass = motor && Object.values(result.checks).every(Boolean);
+  const statusColor = !motor ? '#b45309' : overallPass ? '#15803d' : '#b91c1c';
+  const statusBg    = !motor ? '#fef3c7' : overallPass ? '#dcfce7' : '#fee2e2';
+  const statusText  = !motor ? 'NO MOTOR' : overallPass ? 'PASS' : 'FAIL';
+
+  const cell  = (v, mono) => `<td style="padding:6px 12px;font-size:13px;${mono ? 'font-family:monospace;' : ''}">${v}</td>`;
+  const row2  = (l, v)    => `<tr><td style="padding:5px 12px;font-size:12px;color:#6b7280;width:50%">${l}</td><td style="padding:5px 12px;font-size:13px;font-weight:600;">${v}</td></tr>`;
+  const hr    = () => `<tr><td colspan="2" style="padding:0 12px;"><hr style="border:none;border-top:1px solid #e5e7eb;margin:4px 0;"></td></tr>`;
+
+  const totalCycle = state.steps.reduce((s, st) => s + st.move_time, 0).toFixed(2);
+
+  body.innerHTML = `
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding-bottom:16px;border-bottom:2px solid #e5e7eb;margin-bottom:20px;">
+      <img src="clustervise-logo.png" alt="ClusterVise" style="height:34px;">
+      <div style="text-align:center;font-size:18px;font-weight:800;color:#0f172a;letter-spacing:.04em;">Servo Sizing Report</div>
+      <div style="text-align:right;font-size:12px;color:#6b7280;">
+        ${new Date().toLocaleDateString(undefined, {day:'numeric',month:'long',year:'numeric'})}<br>
+        <span style="background:${statusBg};color:${statusColor};padding:2px 10px;border-radius:99px;font-size:12px;font-weight:700;">${statusText}</span>
+      </div>
+    </div>
+
+    <!-- Two-column config + results -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px;">
+      <div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7280;margin-bottom:8px;">Mechanical Configuration</div>
+        <table style="border-collapse:collapse;width:100%;background:#f9fafb;border-radius:8px;overflow:hidden;">
+          ${row2('BS pitch', state.bs_pitch + ' mm')}${hr()}
+          ${row2('BS efficiency', state.bs_efficiency)}${hr()}
+          ${row2('BS friction torque', state.bs_friction_torque + ' Nm')}${hr()}
+          ${row2('PK ratio', state.pk_ratio + ':1')}${hr()}
+          ${row2('PK no-load torque', state.pk_no_load_torque + ' Nm')}${hr()}
+          ${row2('GB ratio', state.gb_ratio + ':1')}${hr()}
+          ${row2('GB efficiency', state.gb_efficiency)}${hr()}
+          ${row2('Accel/decel', state.acc_pct + '%')}${hr()}
+          ${row2('Safety factor', state.safety_factor + '%')}
+        </table>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7280;margin-bottom:8px;">Key Results</div>
+        <table style="border-collapse:collapse;width:100%;background:#f9fafb;border-radius:8px;overflow:hidden;">
+          ${row2('Peak motor torque', result.T_peak_motor.toFixed(3) + ' Nm')}${hr()}
+          ${row2('RMS torque', result.T_rms_motor.toFixed(3) + ' Nm')}${hr()}
+          ${row2('Motor speed', Math.round(result.Nmotor) + ' rpm')}${hr()}
+          ${row2('Axial load', result.axial_force.toFixed(1) + ' N')}${hr()}
+          ${row2('Reflected inertia', (result.I_motor * 1e6).toFixed(3) + ' kg·mm²')}${hr()}
+          ${row2('Inertia ratio', result.inertia_ratio !== null ? result.inertia_ratio.toFixed(2) : '—')}${hr()}
+          ${row2('BS shaft torque', result.T_peak_bs.toFixed(3) + ' Nm')}${hr()}
+          ${row2('Total cycle time', totalCycle + ' s')}${hr()}
+          ${row2('Motion steps', state.steps.length)}
+        </table>
+      </div>
+    </div>
+
+    <!-- Motion steps table -->
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7280;margin-bottom:8px;">Motion Steps</div>
+    <table style="border-collapse:collapse;width:100%;margin-bottom:24px;font-size:13px;">
+      <thead>
+        <tr style="background:#f1f5f9;">
+          <th style="padding:8px 12px;text-align:left;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#6b7280;">Step</th>
+          <th style="padding:8px 12px;text-align:right;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#6b7280;">Stroke (mm)</th>
+          <th style="padding:8px 12px;text-align:right;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#6b7280;">Move time (s)</th>
+          <th style="padding:8px 12px;text-align:right;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#6b7280;">Ext. force (N)</th>
+          <th style="padding:8px 12px;text-align:right;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#6b7280;">Mass (kg)</th>
+          <th style="padding:8px 12px;text-align:right;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#6b7280;">Tilt (°)</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${state.steps.map((s, i) => `
+          <tr style="border-top:1px solid #e5e7eb;${i % 2 ? 'background:#f9fafb;' : ''}">
+            ${cell(s.label || 'Step '+(i+1))}
+            ${cell(s.stroke, true)}
+            ${cell(s.move_time, true)}
+            ${cell(s.external_force, true)}
+            ${cell(s.load_mass, true)}
+            ${cell(s.tilt_deg, true)}
+          </tr>`).join('')}
+      </tbody>
+    </table>
+
+    <!-- Selected motor -->
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7280;margin-bottom:8px;">Selected Motor</div>
+    ${motor ? `
+    <table style="border-collapse:collapse;width:100%;background:#f9fafb;border-radius:8px;overflow:hidden;margin-bottom:24px;">
+      ${row2('Part number', `<strong>${motor.pn}</strong>`)}${hr()}
+      ${row2('Series', motor.series)}${hr()}
+      ${row2('Rated torque M₀', motor.M0.toFixed(2) + ' Nm')}${hr()}
+      ${row2('Peak torque Tmax', motor.Tmax.toFixed(2) + ' Nm')}${hr()}
+      ${row2('Max speed Nmax', motor.Nmax + ' rpm')}${hr()}
+      ${row2('Rotor inertia J', motor.J + ' kg·cm²')}
+    </table>` : `<p style="color:#b45309;font-size:13px;padding:12px;background:#fef3c7;border-radius:8px;margin-bottom:24px;">No motor selected — click a row in the Motor Catalog above.</p>`}
+
+    <!-- Verification summary -->
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7280;margin-bottom:8px;">Verification Summary</div>
+    <table style="border-collapse:collapse;width:100%;font-size:13px;">
+      <thead><tr style="background:#f1f5f9;">
+        <th style="padding:8px 12px;text-align:left;font-size:11px;color:#6b7280;text-transform:uppercase;">Criterion</th>
+        <th style="padding:8px 12px;text-align:right;font-size:11px;color:#6b7280;text-transform:uppercase;">Actual</th>
+        <th style="padding:8px 12px;text-align:right;font-size:11px;color:#6b7280;text-transform:uppercase;">Limit</th>
+        <th style="padding:8px 12px;text-align:center;font-size:11px;color:#6b7280;text-transform:uppercase;">Status</th>
+      </tr></thead>
+      <tbody>
+        ${[
+          ['Motor speed',      Math.round(result.Nmotor)+' rpm',                          motor ? motor.Nmax+' rpm' : '—',                result.checks.speed],
+          ['Peak torque',      result.T_peak_motor.toFixed(3)+' Nm',                      motor ? motor.Tmax.toFixed(2)+' Nm' : '—',      result.checks.peak],
+          ['RMS torque',       result.T_rms_motor.toFixed(3)+' Nm',                       motor ? (motor.M0*0.7).toFixed(3)+' Nm' : '—',  result.checks.rms],
+          ['Inertia ratio',    result.inertia_ratio !== null ? result.inertia_ratio.toFixed(2) : '—', '10',                               result.checks.inertia],
+          ['BS speed',         Math.round(result.Nscrew)+' rpm',                          '6000 rpm',                                     result.checks.ball_screw_speed],
+          ['BS acceleration',  result.amax.toFixed(2)+' m/s²',                            '5 m/s²',                                       result.checks.ball_screw_accel],
+        ].map(([name, actual, cap, ok], i) => `
+          <tr style="border-top:1px solid #e5e7eb;${i%2?'background:#f9fafb;':''}">
+            <td style="padding:7px 12px;">${name}</td>
+            <td style="padding:7px 12px;text-align:right;font-family:monospace;">${actual}</td>
+            <td style="padding:7px 12px;text-align:right;font-family:monospace;">${cap}</td>
+            <td style="padding:7px 12px;text-align:center;">
+              <span style="background:${ok?'#dcfce7':'#fee2e2'};color:${ok?'#15803d':'#b91c1c'};padding:2px 10px;border-radius:99px;font-size:11px;font-weight:700;">${ok?'OK':'FAIL'}</span>
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+
+    <div style="margin-top:20px;font-size:11px;color:#9ca3af;text-align:center;border-top:1px solid #e5e7eb;padding-top:12px;">
+      Generated by ClusterVise Servo Sizing Suite · ${new Date().toLocaleString()}
+    </div>`;
+
+  if (btn) btn.onclick = () => window.print();
 }
 
 window.addEventListener('DOMContentLoaded', init);

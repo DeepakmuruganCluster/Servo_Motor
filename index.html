@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>TITAN Servo Sizing — Project Manager</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --titan:#1F3864;
+  --blue:#1d4ed8;
+  --blue-lt:#dbeafe;
+  --bg:#f3f4f6;
+  --surface:#fff;
+  --border:#e5e7eb;
+  --text:#111827;
+  --sub:#6b7280;
+  --ok:#16a34a;
+  --ok-lt:#dcfce7;
+  --fail:#dc2626;
+  --fail-lt:#fee2e2;
+  --warn:#d97706;
+  --warn-lt:#fef3c7;
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column}
+header{background:var(--titan);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:60px;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.brand{display:flex;align-items:center;gap:14px}
+header h1{font-size:20px;font-weight:800;letter-spacing:2px}
+header span{font-size:12px;opacity:.6;margin-left:6px;font-weight:400;letter-spacing:.5px}
+.main{flex:1;max-width:1100px;margin:0 auto;padding:40px 24px;width:100%}
+.page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:32px;flex-wrap:wrap;gap:12px}
+.page-header h2{font-size:22px;font-weight:700;color:var(--titan)}
+.page-header p{font-size:14px;color:var(--sub);margin-top:4px}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;gap:8px;padding:10px 20px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;border:none;transition:background .15s,transform .1s;text-decoration:none}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:var(--blue);color:#fff}
+.btn-primary:hover{background:#1e40af}
+.btn-ghost{background:transparent;color:var(--sub);border:1px solid var(--border)}
+.btn-ghost:hover{background:var(--bg);color:var(--text)}
+.btn-danger{background:transparent;color:var(--fail);border:1px solid #fca5a5;font-size:12px;padding:5px 10px}
+.btn-danger:hover{background:var(--fail-lt)}
+.btn-sm{padding:6px 14px;font-size:13px;border-radius:6px}
+
+/* Empty state */
+.empty{text-align:center;padding:80px 24px;color:var(--sub)}
+.empty svg{margin:0 auto 16px;display:block;opacity:.35}
+.empty h3{font-size:18px;font-weight:600;color:var(--text);margin-bottom:8px}
+.empty p{font-size:14px;line-height:1.6;max-width:360px;margin:0 auto 24px}
+
+/* Project grid */
+.project-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:20px}
+.project-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,.06);padding:24px;display:flex;flex-direction:column;gap:14px;transition:box-shadow .2s,transform .2s;cursor:pointer;text-decoration:none;color:inherit}
+.project-card:hover{box-shadow:0 6px 20px rgba(29,78,216,.13);transform:translateY(-2px);border-color:#93c5fd}
+.project-card-header{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.project-card-title{font-size:16px;font-weight:700;color:var(--titan);line-height:1.3}
+.project-card-meta{font-size:12px;color:var(--sub);margin-top:4px}
+.project-card-actions{display:flex;gap:6px;align-items:center;flex-shrink:0}
+.servo-chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700}
+.chip-ok{background:var(--ok-lt);color:var(--ok)}
+.chip-fail{background:var(--fail-lt);color:var(--fail)}
+.chip-warn{background:var(--warn-lt);color:var(--warn)}
+.chip-new{background:var(--blue-lt);color:var(--blue)}
+.project-card-footer{font-size:11px;color:var(--sub);border-top:1px solid var(--border);padding-top:12px;margin-top:auto}
+
+/* Modal overlay */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .2s}
+.modal-overlay.open{opacity:1;pointer-events:all}
+.modal{background:var(--surface);border-radius:16px;padding:32px;width:100%;max-width:440px;box-shadow:0 20px 60px rgba(0,0,0,.2);display:flex;flex-direction:column;gap:18px}
+.modal h3{font-size:18px;font-weight:700;color:var(--titan)}
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:13px;font-weight:600;color:var(--text)}
+.field input{padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;outline:none;transition:border .15s}
+.field input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(29,78,216,.1)}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:4px}
+
+footer{text-align:center;font-size:11px;color:var(--sub);padding:20px;border-top:1px solid var(--border)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <svg width="32" height="32" viewBox="0 0 32 32">
+      <rect width="32" height="32" rx="6" fill="#fff" opacity=".12"/>
+      <rect x="4" y="14" width="24" height="4" rx="2" fill="#fff"/>
+      <rect x="10" y="7" width="4" height="18" rx="2" fill="#fff"/>
+      <rect x="18" y="7" width="4" height="18" rx="2" fill="#fff"/>
+    </svg>
+    <h1>TITAN <span>Servo Sizing Suite</span></h1>
+  </div>
+</header>
+
+<div class="main">
+  <div class="page-header">
+    <div>
+      <h2>Projects</h2>
+      <p>Manage servo sizing projects. Each project holds multiple applications, each with its own motor.</p>
+    </div>
+    <button class="btn btn-primary" id="new-project-btn">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      New Project
+    </button>
+  </div>
+
+  <div id="project-list"></div>
+</div>
+
+<footer>Titan Machine Building &amp; Automation · Servo Sizing Suite · v3.0</footer>
+
+<!-- New Project Modal -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <h3>New Project</h3>
+    <div class="field">
+      <label for="inp-name">Project name *</label>
+      <input id="inp-name" type="text" placeholder="e.g. Assembly Line A" maxlength="80" />
+    </div>
+    <div class="field">
+      <label for="inp-customer">Customer / Company</label>
+      <input id="inp-customer" type="text" placeholder="e.g. Acme Corp" maxlength="80" />
+    </div>
+    <div class="field">
+      <label for="inp-machine">Machine / Description</label>
+      <input id="inp-machine" type="text" placeholder="e.g. Rotary Index Table" maxlength="80" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="modal-cancel">Cancel</button>
+      <button class="btn btn-primary" id="modal-create">Create Project</button>
+    </div>
+  </div>
+</div>
+
+<script src="projects.js"></script>
+<script>
+(function () {
+  function statusChip(status) {
+    if (status === 'PASS') return `<span class="chip chip-ok">PASS</span>`;
+    if (status === 'FAIL') return `<span class="chip chip-fail">FAIL</span>`;
+    if (status === 'NEW') return `<span class="chip chip-new">NEW</span>`;
+    return `<span class="chip chip-warn">${status}</span>`;
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+
+  function renderList() {
+    const container = document.getElementById('project-list');
+    const projects = Projects.getAll();
+
+    if (projects.length === 0) {
+      container.innerHTML = `
+        <div class="empty">
+          <svg width="64" height="64" fill="none" stroke="#9ca3af" stroke-width="1.5" viewBox="0 0 24 24">
+            <path d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/>
+            <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+          </svg>
+          <h3>No projects yet</h3>
+          <p>Create your first project to start sizing servo motors.</p>
+          <button class="btn btn-primary" id="empty-new-btn">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            New Project
+          </button>
+        </div>`;
+      document.getElementById('empty-new-btn')?.addEventListener('click', openModal);
+      return;
+    }
+
+    container.innerHTML = `<div class="project-grid">${projects.map(proj => {
+      const chips = proj.servos.length
+        ? proj.servos.map(s => statusChip(s.status)).join('')
+        : '<span class="chip chip-new">No applications</span>';
+      return `
+        <div class="project-card" data-id="${proj.id}" tabindex="0" role="button" aria-label="Open project ${proj.name}">
+          <div class="project-card-header">
+            <div>
+              <div class="project-card-title">${escHtml(proj.name)}</div>
+              <div class="project-card-meta">
+                ${proj.customer ? escHtml(proj.customer) : ''}
+                ${proj.customer && proj.machine ? ' · ' : ''}
+                ${proj.machine ? escHtml(proj.machine) : ''}
+              </div>
+            </div>
+            <div class="project-card-actions">
+              <button class="btn btn-danger btn-sm delete-btn" data-id="${proj.id}" title="Delete project" aria-label="Delete ${escHtml(proj.name)}">Delete</button>
+            </div>
+          </div>
+          <div class="servo-chips">${chips}</div>
+          <div class="project-card-footer">
+            ${proj.servos.length} application${proj.servos.length !== 1 ? 's' : ''} · Last updated ${fmtDate(proj.lastUpdated)}
+          </div>
+        </div>`;
+    }).join('')}</div>`;
+
+    container.querySelectorAll('.project-card').forEach(card => {
+      card.addEventListener('click', e => {
+        if (e.target.closest('.delete-btn')) return;
+        window.location.href = 'project.html?id=' + card.dataset.id;
+      });
+      card.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          window.location.href = 'project.html?id=' + card.dataset.id;
+        }
+      });
+    });
+
+    container.querySelectorAll('.delete-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const proj = Projects.get(btn.dataset.id);
+        if (!proj) return;
+        if (confirm(`Delete project "${proj.name}" and all its applications? This cannot be undone.`)) {
+          Projects.delete(btn.dataset.id);
+          renderList();
+        }
+      });
+    });
+  }
+
+  function escHtml(str) {
+    return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function openModal() {
+    document.getElementById('inp-name').value = '';
+    document.getElementById('inp-customer').value = '';
+    document.getElementById('inp-machine').value = '';
+    document.getElementById('modal-overlay').classList.add('open');
+    document.getElementById('inp-name').focus();
+  }
+
+  function closeModal() {
+    document.getElementById('modal-overlay').classList.remove('open');
+  }
+
+  document.getElementById('new-project-btn').addEventListener('click', openModal);
+  document.getElementById('modal-cancel').addEventListener('click', closeModal);
+  document.getElementById('modal-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('modal-overlay')) closeModal();
+  });
+
+  document.getElementById('modal-create').addEventListener('click', () => {
+    const name = document.getElementById('inp-name').value.trim();
+    if (!name) {
+      document.getElementById('inp-name').focus();
+      return;
+    }
+    const id = Projects.create({
+      name,
+      customer: document.getElementById('inp-customer').value.trim(),
+      machine: document.getElementById('inp-machine').value.trim(),
+    });
+    closeModal();
+    window.location.href = 'project.html?id=' + id;
+  });
+
+  document.getElementById('inp-name').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('modal-create').click();
+  });
+
+  renderList();
+})();
+</script>
+</body>
+</html>

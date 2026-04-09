@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TITAN Servo Sizing — Application Calculator</title>
+  <link rel="stylesheet" href="servo-app.css" />
+  <style>
+    /* Operating conditions — compact horizontal strip */
+    .cond-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px;
+    }
+    .cond-grid .field-row label {
+      font-size: 12px;
+    }
+    .cond-grid .field-row input {
+      padding: 9px 12px;
+      font-size: 13px;
+    }
+
+    /* Mechanical config: two sub-sections side-by-side inside the card */
+    .mech-cols {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+    @media (max-width: 820px) {
+      .mech-cols { grid-template-columns: 1fr; }
+    }
+    .mech-sub h3 {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--accent);
+      margin-bottom: 14px;
+    }
+
+    /* Step cards: horizontal layout inside the card */
+    .step-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+    .step-header strong {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    /* Summary strip */
+    .summary-panel .summary-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div>
+        <h1>TITAN Servo Sizing</h1>
+        <p>Ball screw torque, inertia &amp; motor selection.</p>
+      </div>
+    </div>
+    <div class="nav-links">
+      <a class="header-link" href="index.html">Projects</a>
+    </div>
+  </header>
+
+  <main>
+    <div class="page-grid">
+
+      <!-- ═══════════════════════════════════════
+           COLUMN 1 — MOTION STEPS
+           What does this motor need to DO?
+      ════════════════════════════════════════════ -->
+      <section class="card">
+        <h2>Motion Steps</h2>
+        <p style="font-size:13px;color:var(--muted);margin:-10px 0 18px">
+          Each step is one position movement for this motor. Add as many as the axis performs per cycle.
+        </p>
+
+        <div class="field-grid">
+          <div class="field-row">
+            <label>Dwell time between moves (s)
+              <input data-key="dwell_time" type="number" step="0.01" />
+            </label>
+          </div>
+        </div>
+
+        <div class="section-block">
+          <div class="button-row">
+            <button id="add-step-button" type="button" class="button secondary">+ Add step</button>
+          </div>
+          <div id="movement-steps-container"></div>
+        </div>
+
+        <div class="section-block">
+          <h3 style="font-size:13px;font-weight:700;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em">Import from Excel</h3>
+          <div class="field-grid">
+            <div class="field-row">
+              <label>Upload steps file (.xlsx)
+                <input id="excel-file-input" type="file" accept=".xlsx,.xls" />
+              </label>
+            </div>
+            <div class="button-row">
+              <button id="download-template-button" type="button" class="button secondary">Download template</button>
+            </div>
+            <div id="excel-status" class="footer-note">
+              Expects columns: Step, Stroke, Move time, Acceleration %, External force, Moving mass, Tilt angle.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════════════════════════════════
+           COLUMN 2 — MECHANICAL CONFIGURATION
+           How is this motor SET UP?
+      ════════════════════════════════════════════ -->
+      <section class="card">
+        <h2>Mechanical Configuration</h2>
+        <p style="font-size:13px;color:var(--muted);margin:-10px 0 18px">
+          The physical hardware connecting this motor to the load.
+        </p>
+
+        <div class="mech-cols">
+          <!-- Ball screw + Guide -->
+          <div class="mech-sub">
+            <h3>Ball Screw &amp; Guide</h3>
+            <div class="field-grid">
+              <div class="field-row">
+                <label>Pitch (mm)
+                  <input data-key="bs_pitch" type="number" step="0.1" />
+                </label>
+              </div>
+              <div class="field-row">
+                <label>Efficiency (0–1)
+                  <input data-key="bs_efficiency" type="number" step="0.001" />
+                </label>
+              </div>
+              <div class="field-row">
+                <label>Friction torque (Nm)
+                  <input data-key="bs_friction_torque" type="number" step="0.01" />
+                </label>
+              </div>
+              <div class="field-row">
+                <label>Inertia (kg·m²)
+                  <input data-key="bs_inertia" type="number" step="0.0000001" />
+                </label>
+              </div>
+              <div class="field-row">
+                <label>Guide displacement force (N)
+                  <input data-key="guide_force" type="number" step="1" />
+                </label>
+              </div>
+              <div class="field-row">
+                <label>Guide moving mass (kg)
+                  <input data-key="guide_mass" type="number" step="0.1" />
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Parallel Kit -->
+          <div class="mech-sub">
+            <h3>Parallel Kit</h3>
+            <div class="field-grid">
+              <div class="field-row">
+                <label>Ratio
+                  <input data-key="pk_ratio" type="number" step="0.1" />
+                </label>
+              </div>
+              <div class="field-row">
+                <label>No-load torque (Nm)
+                  <input data-key="pk_no_load_torque" type="number" step="0.01" />
+                </label>
+              </div>
+              <div class="field-row">
+                <label>Inertia (kg·m²)
+                  <input data-key="pk_inertia" type="number" step="0.0000001" />
+                </label>
+              </div>
+              <div class="field-row">
+                <label>Max torque (Nm)
+                  <input data-key="pk_max_torque" type="number" step="0.1" />
+                </label>
+              </div>
+              <div class="field-row">
+                <label>Max speed (rpm)
+                  <input data-key="pk_max_speed" type="number" step="100" />
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Gearbox + Safety — full width row below -->
+        <div class="mech-cols" style="margin-top:20px;">
+          <div class="mech-sub">
+            <h3>Gearbox</h3>
+            <div class="field-grid">
+              <div class="field-row">
+                <label>Ratio
+                  <input data-key="gb_ratio" type="number" step="0.1" />
+                </label>
+              </div>
+              <div class="field-row">
+                <label>Efficiency (0–1)
+                  <input data-key="gb_efficiency" type="number" step="0.01" />
+                </label>
+              </div>
+              <div class="field-row">
+                <label>No-load torque (Nm)
+                  <input data-key="gb_no_load_torque" type="number" step="0.01" />
+                </label>
+              </div>
+              <div class="field-row">
+                <label>Inertia (kg·m²)
+                  <input data-key="gb_inertia" type="number" step="0.0000001" />
+                </label>
+              </div>
+              <div class="field-row">
+                <label>Backlash (arcmin)
+                  <input data-key="gb_backlash" type="number" step="0.1" />
+                </label>
+              </div>
+            </div>
+          </div>
+          <div class="mech-sub">
+            <h3>General</h3>
+            <div class="field-grid">
+              <div class="field-row">
+                <label>Safety factor (%)
+                  <input data-key="safety_factor" type="number" step="1" />
+                </label>
+              </div>
+            </div>
+            <p style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5">
+              Direct drive: set PK ratio = 1, no-load = 0.<br/>
+              No gearbox: set GB ratio = 1, efficiency = 1.
+            </p>
+          </div>
+        </div>
+        <!-- Drive ratio suggestion -->
+        <div class="section-block">
+          <h3 style="font-size:13px;font-weight:700;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em">Drive ratio suggestion</h3>
+          <div id="gearbox-best-suggestion" class="suggestion-note">Updates after calculation.</div>
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr><th>Ratio</th><th>Motor torque (Nm)</th><th>Motor speed (rpm)</th><th>Score</th><th>Viable</th></tr>
+              </thead>
+              <tbody id="gearbox-suggestion-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════════════════════════════════
+           FULL WIDTH — OPERATING CONDITIONS
+           How long and how often does this run?
+           (needed for RMS torque / duty cycle)
+      ════════════════════════════════════════════ -->
+      <section class="card" style="grid-column: 1 / -1;">
+        <h2>Operating Conditions</h2>
+        <p style="font-size:13px;color:var(--muted);margin:-10px 0 16px">
+          Used to calculate RMS torque (duty cycle) and verify service life.
+        </p>
+        <div class="cond-grid">
+          <div class="field-row">
+            <label>Machine cycle time (s)
+              <input data-key="project_total_cycle" type="number" step="0.1" />
+            </label>
+          </div>
+          <div class="field-row">
+            <label>Axis on-time per cycle (s)
+              <input data-key="project_operating_time" type="number" step="0.1" />
+            </label>
+          </div>
+          <div class="field-row">
+            <label>Shifts per day
+              <input data-key="project_shifts" type="number" step="1" />
+            </label>
+          </div>
+          <div class="field-row">
+            <label>Hours per shift
+              <input data-key="project_hours_shift" type="number" step="0.5" />
+            </label>
+          </div>
+          <div class="field-row">
+            <label>Days per week
+              <input data-key="project_days_week" type="number" step="1" />
+            </label>
+          </div>
+          <div class="field-row">
+            <label>Service life (yrs)
+              <input data-key="project_service_life" type="number" step="1" />
+            </label>
+          </div>
+          <div class="field-row">
+            <label>Accuracy required (µm)
+              <input data-key="project_accuracy" type="number" step="1" />
+            </label>
+          </div>
+        </div>
+        <div id="project-summary" class="summary-panel" style="margin-top:16px;"></div>
+      </section>
+
+      <!-- ═══════════════════════════════════════
+           FULL WIDTH — PRIMARY RESULTS
+      ════════════════════════════════════════════ -->
+      <section class="card" style="grid-column: 1 / -1;">
+        <h2>Primary Results</h2>
+        <div class="section-block">
+          <h3>Ball screw shaft</h3>
+          <div class="metric-grid">
+            <div class="metric-card"><span>Linear speed</span><strong id="out_vmax">—</strong></div>
+            <div class="metric-card"><span>Acceleration</span><strong id="out_amax">—</strong></div>
+            <div class="metric-card"><span>Torque at ball screw shaft</span><strong id="out_tload">—</strong></div>
+            <div class="metric-card"><span>Peak ball screw torque</span><strong id="out_tpeak_bs">—</strong></div>
+            <div class="metric-card"><span>Ball screw speed</span><strong id="out_nscrew">—</strong></div>
+            <div class="metric-card"><span>Axial load</span><strong id="out_faxial">—</strong></div>
+            <div class="metric-card"><span>Acceleration torque</span><strong id="out_taccel">—</strong></div>
+          </div>
+        </div>
+        <div class="section-block">
+          <h3>Motor shaft</h3>
+          <div class="metric-grid">
+            <div class="metric-card"><span>Speed required</span><strong id="out_nmotor">—</strong></div>
+            <div class="metric-card"><span>Peak torque required</span><strong id="out_tpeak_motor">—</strong></div>
+            <div class="metric-card"><span>RMS torque required</span><strong id="out_trms">—</strong></div>
+            <div class="metric-card"><span>Reflected load inertia</span><strong id="out_inertia">—</strong></div>
+            <div class="metric-card"><span>Inertia ratio</span><strong id="out_inertia_ratio">—</strong></div>
+          </div>
+        </div>
+        <div class="info-box">
+          <strong>Note:</strong> Peak torque includes safety factor and drive no-load torque. RMS torque uses duty cycle from operating conditions above.
+        </div>
+      </section>
+
+      <!-- ═══════════════════════════════════════
+           FULL WIDTH — MOTOR CATALOG
+      ════════════════════════════════════════════ -->
+      <section class="card" style="grid-column: 1 / -1;">
+        <h2>Motor Catalog</h2>
+        <div id="motor-best-suggestion" class="footer-note">Motor recommendation appears after inputs are set.</div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Part number</th>
+                <th>Series</th>
+                <th>kW</th>
+                <th>M₀ (Nm)</th>
+                <th>Tmax (Nm)</th>
+                <th>Nmax (rpm)</th>
+                <th>J (kg·cm²)</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="motor-table-body"></tbody>
+          </table>
+        </div>
+        <div class="section-block" id="selected-motor-details"></div>
+      </section>
+
+      <!-- ═══════════════════════════════════════
+           FULL WIDTH — VERIFICATION CHECKLIST
+      ════════════════════════════════════════════ -->
+      <section class="card" style="grid-column: 1 / -1;">
+        <h2>Verification Checklist</h2>
+        <table class="checklist">
+          <thead><tr><th>Criterion</th><th>Actual</th><th>Capacity</th><th>Status</th><th>Notes</th></tr></thead>
+          <tbody id="verification-body"></tbody>
+        </table>
+      </section>
+
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="projects.js"></script>
+  <script src="servo-app.js"></script>
+</body>
+</html>

@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>TITAN — Project</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --titan:#1F3864;
+  --blue:#1d4ed8;
+  --blue-lt:#dbeafe;
+  --bg:#f3f4f6;
+  --surface:#fff;
+  --border:#e5e7eb;
+  --text:#111827;
+  --sub:#6b7280;
+  --ok:#16a34a;
+  --ok-lt:#dcfce7;
+  --fail:#dc2626;
+  --fail-lt:#fee2e2;
+  --warn:#d97706;
+  --warn-lt:#fef3c7;
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column}
+header{background:var(--titan);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:60px;box-shadow:0 2px 8px rgba(0,0,0,.3);flex-shrink:0}
+.brand{display:flex;align-items:center;gap:12px}
+header h1{font-size:18px;font-weight:800;letter-spacing:1.5px}
+.nav-back{display:flex;align-items:center;gap:6px;color:#fff;text-decoration:none;opacity:.8;font-size:13px;font-weight:600;transition:opacity .15s}
+.nav-back:hover{opacity:1}
+
+.main{flex:1;max-width:1100px;margin:0 auto;padding:36px 24px;width:100%}
+
+/* Project info bar */
+.project-info-bar{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:24px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.project-info-bar h2{font-size:20px;font-weight:800;color:var(--titan)}
+.project-meta{font-size:13px;color:var(--sub);margin-top:4px;line-height:1.6}
+.project-info-actions{display:flex;gap:8px;align-items:center;flex-shrink:0}
+
+/* Upload panel */
+.upload-panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;margin-bottom:24px}
+.upload-panel h3{font-size:14px;font-weight:700;color:var(--titan);margin-bottom:4px}
+.upload-panel p{font-size:13px;color:var(--sub);margin-bottom:16px;line-height:1.5}
+.upload-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.upload-drop{flex:1;min-width:220px;border:2px dashed var(--border);border-radius:10px;padding:16px 20px;cursor:pointer;display:flex;align-items:center;gap:12px;transition:border-color .15s,background .15s}
+.upload-drop:hover,.upload-drop.over{border-color:var(--blue);background:var(--blue-lt)}
+.upload-drop input{display:none}
+.upload-drop-text{font-size:13px;color:var(--sub)}
+.upload-drop-text strong{color:var(--text);display:block;font-size:13px}
+.upload-status{font-size:12px;margin-top:8px;padding:6px 10px;border-radius:6px;display:none}
+.upload-status.ok{background:var(--ok-lt);color:var(--ok);display:block}
+.upload-status.err{background:var(--fail-lt);color:var(--fail);display:block}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:background .15s,transform .1s;text-decoration:none;white-space:nowrap}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:var(--blue);color:#fff}
+.btn-primary:hover{background:#1e40af}
+.btn-ghost{background:transparent;color:var(--sub);border:1px solid var(--border)}
+.btn-ghost:hover{background:var(--bg);color:var(--text)}
+.btn-danger{background:transparent;color:var(--fail);border:1px solid #fca5a5}
+.btn-danger:hover{background:var(--fail-lt)}
+.btn-sm{padding:5px 12px;font-size:12px;border-radius:6px}
+
+/* Section header */
+.section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.section-head h3{font-size:15px;font-weight:700;color:var(--titan)}
+
+/* Application grid */
+.app-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+.app-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:12px;box-shadow:0 1px 6px rgba(0,0,0,.05);transition:box-shadow .2s,transform .2s}
+.app-card:hover{box-shadow:0 4px 16px rgba(29,78,216,.1);transform:translateY(-2px)}
+.app-card-header{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.app-name{font-size:15px;font-weight:700;color:var(--titan)}
+
+/* Status badges */
+.badge{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700}
+.badge-ok{background:var(--ok-lt);color:var(--ok)}
+.badge-fail{background:var(--fail-lt);color:var(--fail)}
+.badge-warn{background:var(--warn-lt);color:var(--warn)}
+.badge-new{background:var(--blue-lt);color:var(--blue)}
+
+.app-motor{font-size:12px;color:var(--sub);font-family:monospace}
+.app-motor-none{font-size:12px;color:var(--sub);font-style:italic}
+.app-params{font-size:11px;color:var(--sub);line-height:1.7}
+.app-updated{font-size:11px;color:#9ca3af}
+.app-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+
+/* Empty state */
+.empty-apps{background:var(--surface);border:1px dashed var(--border);border-radius:12px;padding:48px 24px;text-align:center;color:var(--sub)}
+.empty-apps h4{font-size:15px;font-weight:600;color:var(--text);margin-bottom:6px}
+.empty-apps p{font-size:13px;margin-bottom:20px}
+
+/* Modals */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .2s}
+.modal-overlay.open{opacity:1;pointer-events:all}
+.modal{background:var(--surface);border-radius:16px;padding:28px;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,.2);display:flex;flex-direction:column;gap:16px}
+.modal h3{font-size:17px;font-weight:700;color:var(--titan)}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:12px;font-weight:600;color:var(--text)}
+.field input{padding:8px 11px;border:1px solid var(--border);border-radius:7px;font-size:13px;outline:none;transition:border .15s}
+.field input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(29,78,216,.1)}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end}
+
+footer{text-align:center;font-size:11px;color:var(--sub);padding:16px;border-top:1px solid var(--border)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <svg width="28" height="28" viewBox="0 0 32 32">
+      <rect width="32" height="32" rx="6" fill="#fff" opacity=".12"/>
+      <rect x="4" y="14" width="24" height="4" rx="2" fill="#fff"/>
+      <rect x="10" y="7" width="4" height="18" rx="2" fill="#fff"/>
+      <rect x="18" y="7" width="4" height="18" rx="2" fill="#fff"/>
+    </svg>
+    <h1>TITAN</h1>
+  </div>
+  <a class="nav-back" href="index.html">
+    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+    All Projects
+  </a>
+</header>
+
+<div class="main">
+
+  <!-- Project name / meta -->
+  <div class="project-info-bar">
+    <div>
+      <h2 id="proj-name">Loading…</h2>
+      <div class="project-meta" id="proj-meta"></div>
+    </div>
+    <div class="project-info-actions">
+      <button class="btn btn-ghost btn-sm" id="edit-info-btn">Edit info</button>
+    </div>
+  </div>
+
+  <!-- ── Upload project file ── -->
+  <div class="upload-panel">
+    <h3>Upload Project File</h3>
+    <p>Each row in the Excel file is one motor. Columns: <strong>Application, Stroke (mm), Move time (s), Accel %, Ext. force (N), Moving mass (kg), Tilt (°), BS pitch (mm), BS efficiency, BS friction (Nm), BS inertia (kg·m²), Guide force (N), Guide mass (kg), Drive type, Gear ratio, Gear efficiency, No-load torque (Nm), Gear inertia (kg·m²), Safety factor (%), Cycle time (s), Op. time (s), Shifts/day, Hours/shift, Days/week, Service life (yrs), Accuracy (µm).</strong></p>
+    <div class="upload-row">
+      <label class="upload-drop" id="upload-drop">
+        <input type="file" id="project-file-input" accept=".xlsx,.xls" />
+        <svg width="22" height="22" fill="none" stroke="#9ca3af" stroke-width="1.8" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <div class="upload-drop-text">
+          <strong>Choose file or drag &amp; drop</strong>
+          .xlsx — one row per motor
+        </div>
+      </label>
+      <button class="btn btn-ghost" id="download-template-btn">
+        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download template
+      </button>
+    </div>
+    <div class="upload-status" id="upload-status"></div>
+  </div>
+
+  <!-- ── Applications list ── -->
+  <div class="section-head">
+    <h3>Applications</h3>
+    <button class="btn btn-ghost btn-sm" id="add-app-btn">+ Add manually</button>
+  </div>
+  <div id="app-list"></div>
+
+</div>
+
+<footer>Titan Machine Building &amp; Automation · Servo Sizing Suite · v3.0</footer>
+
+<!-- Edit Project Modal -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <h3>Edit Project Info</h3>
+    <div class="field">
+      <label for="inp-name">Project name *</label>
+      <input id="inp-name" type="text" maxlength="80" />
+    </div>
+    <div class="field">
+      <label for="inp-customer">Customer / Company</label>
+      <input id="inp-customer" type="text" maxlength="80" />
+    </div>
+    <div class="field">
+      <label for="inp-machine">Machine / Description</label>
+      <input id="inp-machine" type="text" maxlength="80" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="modal-cancel">Cancel</button>
+      <button class="btn btn-primary" id="modal-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Application Modal -->
+<div class="modal-overlay" id="app-modal-overlay">
+  <div class="modal">
+    <h3>Add Application</h3>
+    <div class="field">
+      <label for="inp-app-name">Application name *</label>
+      <input id="inp-app-name" type="text" placeholder="e.g. OP10, Pick, Transfer, X-Axis" maxlength="60" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="app-modal-cancel">Cancel</button>
+      <button class="btn btn-primary" id="app-modal-create">Add &amp; Launch</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="projects.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  /* ── Routing ── */
+  const params = new URLSearchParams(window.location.search);
+  const projectId = params.get('id');
+  if (!projectId || !Projects.get(projectId)) {
+    window.location.href = 'index.html';
+    return;
+  }
+
+  /* ── Helpers ── */
+  function escHtml(str) {
+    return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function fmtDate(iso) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleDateString(undefined, { day:'numeric', month:'short', year:'numeric' });
+  }
+  function statusBadge(status) {
+    const map = { PASS:'badge-ok', FAIL:'badge-fail', NEW:'badge-new' };
+    return `<span class="badge ${map[status]||'badge-warn'}">${escHtml(status)}</span>`;
+  }
+  function nl(v) { return typeof v==='number' ? v : parseFloat(v); }
+
+  /* ── Project info ── */
+  function renderInfo() {
+    const p = Projects.get(projectId);
+    document.title = 'TITAN — ' + p.name;
+    document.getElementById('proj-name').textContent = p.name;
+    const meta = [p.customer, p.machine].filter(Boolean).join(' · ');
+    document.getElementById('proj-meta').textContent = meta || 'No customer or machine info set.';
+  }
+
+  /* ── Applications grid ── */
+  function renderApps() {
+    const p = Projects.get(projectId);
+    const container = document.getElementById('app-list');
+
+    if (!p.servos.length) {
+      container.innerHTML = `
+        <div class="empty-apps">
+          <h4>No applications yet</h4>
+          <p>Upload a project Excel file — each row becomes one motor application.<br/>Or add them manually one at a time.</p>
+          <button class="btn btn-primary" id="empty-add-btn">+ Add Application</button>
+        </div>`;
+      document.getElementById('empty-add-btn')?.addEventListener('click', openAppModal);
+      return;
+    }
+
+    container.innerHTML = `<div class="app-grid">${p.servos.map(app => {
+      // Show key params from saved state if available
+      let params = '';
+      if (app.state) {
+        const s = app.state;
+        const step = (s.steps && s.steps[0]) || {};
+        params = [
+          step.stroke   ? `Stroke ${step.stroke} mm`        : null,
+          step.move_time? `T-move ${step.move_time} s`      : null,
+          s.bs_pitch    ? `Pitch ${s.bs_pitch} mm`          : null,
+          s.pk_ratio && s.pk_ratio !== 1 ? `PK ${s.pk_ratio}:1` : null,
+          s.gb_ratio && s.gb_ratio !== 1 ? `GB ${s.gb_ratio}:1` : null,
+        ].filter(Boolean).join(' · ');
+      }
+      return `
+      <div class="app-card">
+        <div class="app-card-header">
+          <div class="app-name">${escHtml(app.name)}</div>
+          ${statusBadge(app.status)}
+        </div>
+        ${params ? `<div class="app-params">${escHtml(params)}</div>` : ''}
+        <div>
+          ${app.motor
+            ? `<div class="app-motor">${escHtml(app.motor)}</div>`
+            : `<div class="app-motor-none">No motor selected yet</div>`}
+          <div class="app-updated">Last edited ${fmtDate(app.lastUpdated)}</div>
+        </div>
+        <div class="app-actions">
+          <button class="btn btn-primary btn-sm launch-btn" data-id="${app.id}">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Open
+          </button>
+          <button class="btn btn-ghost btn-sm rename-btn" data-id="${app.id}" data-name="${escHtml(app.name)}">Rename</button>
+          <button class="btn btn-danger btn-sm delete-btn" data-id="${app.id}" data-name="${escHtml(app.name)}">Delete</button>
+        </div>
+      </div>`}).join('')}</div>`;
+
+    container.querySelectorAll('.launch-btn').forEach(b =>
+      b.addEventListener('click', () => Projects.launchServo(projectId, b.dataset.id)));
+
+    container.querySelectorAll('.rename-btn').forEach(b =>
+      b.addEventListener('click', () => {
+        const name = prompt('Rename application:', b.dataset.name);
+        if (name && name.trim()) { renameApp(b.dataset.id, name.trim()); renderApps(); }
+      }));
+
+    container.querySelectorAll('.delete-btn').forEach(b =>
+      b.addEventListener('click', () => {
+        if (confirm(`Delete application "${b.dataset.name}"? This cannot be undone.`)) {
+          Projects.deleteServo(projectId, b.dataset.id);
+          renderApps();
+        }
+      }));
+  }
+
+  function renameApp(servoId, name) {
+    const raw = localStorage.getItem('titanProjectStore') || '{}';
+    const store = JSON.parse(raw);
+    const proj = store.projects && store.projects[projectId];
+    if (!proj) return;
+    const s = proj.servos.find(s => s.id === servoId);
+    if (s) { s.name = name; s.lastUpdated = new Date().toISOString(); proj.lastUpdated = new Date().toISOString(); }
+    localStorage.setItem('titanProjectStore', JSON.stringify(store));
+  }
+
+  /* ══════════════════════════════════════════════════
+     EXCEL IMPORT — one row per motor
+  ══════════════════════════════════════════════════ */
+
+  // Map of lowercase header keywords → state key (or 'name' / step field)
+  const COL_MAP = [
+    [['application','name','op','axis'],         'name'],
+    [['stroke'],                                  'step:stroke'],
+    [['move time','move_time','t move','t_move'], 'step:move_time'],
+    [['accel','acceleration'],                    'step:acc_pct'],
+    [['ext force','external force','f ext','force'],'step:external_force'],
+    [['moving mass','load mass','mass'],           'step:load_mass'],
+    [['tilt'],                                    'step:tilt_deg'],
+    [['bs pitch','pitch'],                        'bs_pitch'],
+    [['bs efficiency','bs eff'],                  'bs_efficiency'],
+    [['bs friction','friction torque'],           'bs_friction_torque'],
+    [['bs inertia'],                              'bs_inertia'],
+    [['guide force'],                             'guide_force'],
+    [['guide mass'],                              'guide_mass'],
+    [['pk ratio','parallel kit ratio','pk_ratio'], 'pk_ratio'],
+    [['pk no load','pk no-load','pk noload'],     'pk_no_load_torque'],
+    [['pk inertia'],                              'pk_inertia'],
+    [['pk max torque'],                           'pk_max_torque'],
+    [['pk max speed'],                            'pk_max_speed'],
+    [['gb ratio','gear ratio','ratio'],           'gb_ratio'],
+    [['gb efficiency','gear efficiency','gear eff'],'gb_efficiency'],
+    [['gb no load','no load','no-load','noload'], 'gb_no_load_torque'],
+    [['gb inertia','gear inertia'],               'gb_inertia'],
+    [['backlash'],                                'gb_backlash'],
+    [['safety factor','safety'],                  'safety_factor'],
+    [['cycle time','t cycle'],                    'project_total_cycle'],
+    [['op time','operating time','on time'],      'project_operating_time'],
+    [['shifts'],                                  'project_shifts'],
+    [['hours per shift','hrs per shift','hours','hrs'], 'project_hours_shift'],
+    [['days per week','days week','days'],         'project_days_week'],
+    [['service life','life yrs','life'],          'project_service_life'],
+    [['accuracy'],                                'project_accuracy'],
+  ];
+
+  const DEFAULT_STATE = {
+    project_shifts:3, project_hours_shift:7, project_days_week:6,
+    project_total_cycle:7, project_operating_time:2.6,
+    project_service_life:10, project_accuracy:10, dwell_time:0.1,
+    steps:[{label:'Step 1',stroke:15,move_time:1.0,acc_pct:25,external_force:250,load_mass:1.0,tilt_deg:45}],
+    mu:0.03, guide_force:15, guide_mass:1.6,
+    bs_pitch:2, bs_efficiency:0.98, bs_inertia:1.0704e-5, bs_friction_torque:0.05,
+    pk_ratio:1, pk_no_load_torque:0.07, pk_inertia:2.67e-5, pk_max_torque:3, pk_max_speed:6000,
+    gb_ratio:1, gb_efficiency:1.0, gb_no_load_torque:0, gb_inertia:0, gb_backlash:0,
+    safety_factor:20,
+  };
+
+  function normaliseHeader(h) {
+    return String(h||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+  }
+
+  function matchHeader(h) {
+    const norm = normaliseHeader(h);
+    for (const [keywords, key] of COL_MAP) {
+      if (keywords.some(k => norm.includes(k))) return key;
+    }
+    return null;
+  }
+
+  function parseProjectExcel(file) {
+    if (!window.XLSX) { showStatus('XLSX library not loaded.', true); return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const wb = XLSX.read(new Uint8Array(e.target.result), { type:'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header:1, blankrows:false });
+        if (rows.length < 2) { showStatus('File must have a header row and at least one data row.', true); return; }
+
+        // Find header row (first row with at least 3 non-empty cells)
+        const headerIdx = rows.findIndex(r => Array.isArray(r) && r.filter(c => c != null && String(c).trim()).length >= 3);
+        if (headerIdx < 0) { showStatus('Could not find a valid header row.', true); return; }
+
+        // Build column index → state key
+        const headers = rows[headerIdx];
+        const colKeys = headers.map(h => matchHeader(h));
+
+        let added = 0, skipped = 0;
+        for (let i = headerIdx + 1; i < rows.length; i++) {
+          const row = rows[i];
+          if (!Array.isArray(row) || row.every(c => c == null || String(c).trim() === '')) continue;
+
+          // Build state object for this motor
+          const motorState = JSON.parse(JSON.stringify(DEFAULT_STATE));
+          motorState.steps = [{ label:'Step 1', stroke:15, move_time:1.0, acc_pct:25, external_force:250, load_mass:1.0, tilt_deg:45 }];
+          let appName = null;
+
+          colKeys.forEach((key, col) => {
+            if (!key || col >= row.length) return;
+            const raw = row[col];
+            if (raw == null || String(raw).trim() === '') return;
+
+            if (key === 'name') {
+              appName = String(raw).trim();
+            } else if (key.startsWith('step:')) {
+              const field = key.slice(5);
+              motorState.steps[0][field] = parseFloat(raw) || 0;
+              motorState.steps[0].label = appName || `Row ${i}`;
+            } else {
+              const num = parseFloat(raw);
+              if (!isNaN(num)) motorState[key] = num;
+            }
+          });
+
+          if (!appName) { skipped++; continue; }
+
+          // Add or update application in project
+          const existing = Projects.get(projectId)?.servos.find(s => s.name === appName);
+          if (existing) {
+            Projects.updateServo(projectId, existing.id, { state: motorState, status: 'NEW' });
+          } else {
+            const sid = Projects.addServo(projectId, appName);
+            Projects.updateServo(projectId, sid, { state: motorState, status: 'NEW' });
+          }
+          added++;
+        }
+
+        const msg = `Imported ${added} motor${added !== 1 ? 's' : ''}` +
+          (skipped ? ` (${skipped} row${skipped!==1?'s':''} skipped — no application name)` : '') + '.';
+        showStatus(msg, false);
+        renderApps();
+      } catch (err) {
+        console.error(err);
+        showStatus('Could not parse file: ' + err.message, true);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function showStatus(msg, isErr) {
+    const el = document.getElementById('upload-status');
+    el.textContent = msg;
+    el.className = 'upload-status ' + (isErr ? 'err' : 'ok');
+  }
+
+  /* ── Template download ── */
+  function downloadTemplate() {
+    if (!window.XLSX) return;
+    const headers = [
+      'Application','Stroke (mm)','Move time (s)','Accel %','Ext. force (N)',
+      'Moving mass (kg)','Tilt (°)','BS pitch (mm)','BS efficiency',
+      'BS friction (Nm)','BS inertia (kg·m²)','Guide force (N)','Guide mass (kg)',
+      'PK ratio','PK no-load (Nm)','PK inertia (kg·m²)','PK max torque (Nm)','PK max speed (rpm)',
+      'GB ratio','GB efficiency','GB no-load (Nm)','GB inertia (kg·m²)','Backlash (arcmin)',
+      'Safety factor (%)','Cycle time (s)','Op. time (s)',
+      'Shifts/day','Hours/shift','Days/week','Service life (yrs)','Accuracy (µm)',
+    ];
+    const example = [
+      'OP10', 50, 1.0, 25, 100, 5, 0,
+      5, 0.98, 0.05, 1.07e-5, 15, 1.6,
+      1, 0.07, 2.67e-5, 3, 6000,
+      3, 0.95, 0.07, 0, 0,
+      20, 7, 2.6, 3, 7, 6, 10, 10,
+    ];
+    const ws = XLSX.utils.aoa_to_sheet([headers, example]);
+    const wb = { SheetNames:['Motors'], Sheets:{ Motors:ws } };
+    const buf = XLSX.write(wb, { bookType:'xlsx', type:'array' });
+    const url = URL.createObjectURL(new Blob([buf], { type:'application/octet-stream' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = 'titan-project-template.xlsx';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  }
+
+  /* ── File drop / input ── */
+  const fileInput = document.getElementById('project-file-input');
+  const dropZone = document.getElementById('upload-drop');
+
+  fileInput.addEventListener('change', e => { if (e.target.files[0]) parseProjectExcel(e.target.files[0]); });
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault(); dropZone.classList.remove('over');
+    const f = e.dataTransfer.files[0];
+    if (f) parseProjectExcel(f);
+  });
+  document.getElementById('download-template-btn').addEventListener('click', downloadTemplate);
+
+  /* ── Edit project info ── */
+  document.getElementById('edit-info-btn').addEventListener('click', () => {
+    const p = Projects.get(projectId);
+    document.getElementById('inp-name').value = p.name;
+    document.getElementById('inp-customer').value = p.customer || '';
+    document.getElementById('inp-machine').value = p.machine || '';
+    document.getElementById('modal-overlay').classList.add('open');
+    document.getElementById('inp-name').focus();
+  });
+  document.getElementById('modal-cancel').addEventListener('click', () =>
+    document.getElementById('modal-overlay').classList.remove('open'));
+  document.getElementById('modal-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('modal-overlay'))
+      document.getElementById('modal-overlay').classList.remove('open');
+  });
+  document.getElementById('modal-save').addEventListener('click', () => {
+    const name = document.getElementById('inp-name').value.trim();
+    if (!name) { document.getElementById('inp-name').focus(); return; }
+    Projects.updateMeta(projectId, {
+      name,
+      customer: document.getElementById('inp-customer').value.trim(),
+      machine:  document.getElementById('inp-machine').value.trim(),
+    });
+    document.getElementById('modal-overlay').classList.remove('open');
+    renderInfo();
+  });
+
+  /* ── Add application manually ── */
+  function openAppModal() {
+    document.getElementById('inp-app-name').value = '';
+    document.getElementById('app-modal-overlay').classList.add('open');
+    document.getElementById('inp-app-name').focus();
+  }
+  document.getElementById('add-app-btn').addEventListener('click', openAppModal);
+  document.getElementById('app-modal-cancel').addEventListener('click', () =>
+    document.getElementById('app-modal-overlay').classList.remove('open'));
+  document.getElementById('app-modal-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('app-modal-overlay'))
+      document.getElementById('app-modal-overlay').classList.remove('open');
+  });
+  document.getElementById('app-modal-create').addEventListener('click', () => {
+    const name = document.getElementById('inp-app-name').value.trim();
+    if (!name) { document.getElementById('inp-app-name').focus(); return; }
+    document.getElementById('app-modal-overlay').classList.remove('open');
+    const sid = Projects.addServo(projectId, name);
+    if (sid) Projects.launchServo(projectId, sid);
+  });
+  document.getElementById('inp-app-name').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('app-modal-create').click();
+  });
+
+  /* ── Init ── */
+  renderInfo();
+  renderApps();
+})();
+</script>
+</body>
+</html>

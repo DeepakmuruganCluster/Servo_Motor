@@ -1022,166 +1022,181 @@ function injectProjectContextBanner() {
 
 /* ─────────────────────────────────────────────
    MOTION PROFILE CHART
-   Single trapezoidal profile for the full cycle.
-   acc_pct applies to TOTAL cycle time, not per step.
-   Step boundaries are marked as vertical dividers.
+   Profile: t_acc → [Step plateau → dwell] × N → t_dec
+   One shared ramp at start, one at end.
+   Each step runs at its own velocity (stroke/move_time).
 ───────────────────────────────────────────── */
 function renderMotionProfileChart() {
   const canvas = document.getElementById('motion-profile-canvas');
   const legend = document.getElementById('motion-profile-legend');
   if (!canvas) return;
 
+  const steps = state.steps;
+  if (!steps.length) return;
+
+  // Total time = t_acc + Σ(move_time) + (N-1)*dwell + t_dec
+  const sumMoves = steps.reduce((s, st) => s + st.move_time, 0);
+  const numDwells = Math.max(0, steps.length - 1);
+  const totalT = sumMoves + numDwells * state.dwell_time;
+  if (totalT <= 0) return;
+
+  const t_acc = Math.min(totalT / 2, totalT * (state.acc_pct / 100));
+  const t_dec = t_acc;
+
+  // Per-step velocity = stroke / move_time (mm/s)
+  const stepV = steps.map(st => st.move_time > 0 ? st.stroke / st.move_time : 0);
+  const maxV  = Math.max(...stepV, 1);
+
+  // Build timeline segments
+  // [ {type:'acc'|'step'|'dwell'|'dec', t0, t1, v0, v1, label?, color?} ]
+  const STEP_COLORS = ['#1d4ed8','#16a34a','#b45309','#9333ea','#dc2626','#0891b2','#c2410c','#15803d'];
+  const segs = [];
+  let cursor = 0;
+
+  // Acceleration ramp — rises to first step velocity
+  const v_first = stepV[0];
+  segs.push({ type:'acc', t0:cursor, t1:cursor+t_acc, v0:0, v1:v_first });
+  cursor += t_acc;
+
+  // Steps + dwells
+  steps.forEach((st, i) => {
+    const v = stepV[i];
+    segs.push({ type:'step', t0:cursor, t1:cursor+st.move_time, v0:v, v1:v,
+                label: st.label || `Step ${i+1}`, color: STEP_COLORS[i % STEP_COLORS.length] });
+    cursor += st.move_time;
+
+    if (i < steps.length - 1 && state.dwell_time > 0) {
+      segs.push({ type:'dwell', t0:cursor, t1:cursor+state.dwell_time, v0:0, v1:0 });
+      cursor += state.dwell_time;
+    }
+  });
+
+  // Deceleration ramp — falls from last step velocity to 0
+  const v_last = stepV[steps.length - 1];
+  segs.push({ type:'dec', t0:cursor, t1:cursor+t_dec, v0:v_last, v1:0 });
+
+  // Canvas setup
   const dpr = window.devicePixelRatio || 1;
   const W   = canvas.parentElement ? canvas.parentElement.clientWidth - 48 : 860;
   const H   = 280;
-  canvas.width  = W * dpr;
-  canvas.height = H * dpr;
-  canvas.style.width  = W + 'px';
-  canvas.style.height = H + 'px';
-
+  canvas.width  = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
   const ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, W, H);
 
   const PAD = { top: 36, right: 24, bottom: 52, left: 70 };
-  const pw  = W - PAD.left - PAD.right;
-  const ph  = H - PAD.top  - PAD.bottom;
+  const pw = W - PAD.left - PAD.right;
+  const ph = H - PAD.top  - PAD.bottom;
+  const fullT = cursor + t_dec;  // actual drawn total
+  const tX = t => PAD.left + (t / fullT) * pw;
+  const vY = v => PAD.top + ph - (v / maxV) * ph;
 
-  // Total cycle time = sum of all step move times
-  const totalT = state.steps.reduce((s, st) => s + st.move_time, 0);
-  if (totalT <= 0) return;
-
-  // Shared acc/dec based on TOTAL cycle time
-  const t_acc   = Math.min(totalT / 2, totalT * (state.acc_pct / 100));
-  const t_dec   = t_acc;
-  const t_const = Math.max(0, totalT - t_acc - t_dec);
-
-  // Peak velocity: total stroke / effective time
-  const totalStroke = state.steps.reduce((s, st) => s + st.stroke, 0);
-  const Vmax = t_const > 0
-    ? totalStroke / (t_const + t_acc)   // approx average peak
-    : totalStroke / totalT;
-
-  const tX = t => PAD.left + (t / totalT) * pw;
-  const vY = v => PAD.top  + ph - (v / (Vmax || 1)) * ph;
-
-  // Grid ────────────────────────────────────────
+  // Grid
   ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = 1;
-  ctx.fillStyle   = '#6b7280'; ctx.font = '11px Inter,system-ui,sans-serif'; ctx.textAlign = 'right';
   const vTicks = 5;
   for (let k = 0; k <= vTicks; k++) {
     const y = PAD.top + ph - (k / vTicks) * ph;
     ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + pw, y); ctx.stroke();
-    ctx.fillText(((k / vTicks) * Vmax).toFixed(0), PAD.left - 8, y + 4);
+    ctx.fillStyle = '#6b7280'; ctx.font = '11px Inter,system-ui,sans-serif'; ctx.textAlign = 'right';
+    ctx.fillText(((k / vTicks) * maxV).toFixed(0), PAD.left - 8, y + 4);
   }
 
   // Y-axis label
   ctx.save();
   ctx.translate(14, PAD.top + ph / 2);
   ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center';
+  ctx.fillStyle = '#6b7280'; ctx.font = '11px Inter,system-ui,sans-serif';
   ctx.fillText('Velocity (mm/s)', 0, 0);
   ctx.restore();
 
-  // Phase legend (top)
+  // Legend top
   const phaseY = PAD.top - 18;
-  [['#3b82f6','Acceleration'], ['#22c55e','Constant velocity'], ['#f97316','Deceleration']].forEach(([c, lbl], i) => {
-    ctx.fillStyle = c; ctx.fillRect(PAD.left + i * 150, phaseY, 12, 9);
+  [['#3b82f6','Acceleration'], ['#22c55e','Constant (step)'], ['#f97316','Deceleration'], ['#e5e7eb','Dwell']].forEach(([c,lbl], i) => {
+    ctx.fillStyle = c; ctx.fillRect(PAD.left + i * 148, phaseY, 12, 9);
     ctx.fillStyle = '#374151'; ctx.textAlign = 'left'; ctx.font = '10px Inter,system-ui,sans-serif';
-    ctx.fillText(lbl, PAD.left + i * 150 + 16, phaseY + 8);
+    ctx.fillText(lbl, PAD.left + i * 148 + 15, phaseY + 8);
   });
 
-  // Fill phases ─────────────────────────────────
-  const fillPhase = (t0, t1, v0, v1, color) => {
+  // Draw segments
+  segs.forEach(seg => {
+    let fillColor, strokeColor;
+    if (seg.type === 'acc')   { fillColor = '#3b82f622'; strokeColor = '#3b82f6'; }
+    else if (seg.type === 'dec')   { fillColor = '#f9731622'; strokeColor = '#f97316'; }
+    else if (seg.type === 'dwell') { fillColor = '#e5e7eb55'; strokeColor = null; }
+    else { fillColor = seg.color + '22'; strokeColor = seg.color; }
+
+    // Fill
     ctx.beginPath();
-    ctx.moveTo(tX(t0), vY(v0));
-    ctx.lineTo(tX(t1), vY(v1));
-    ctx.lineTo(tX(t1), vY(0));
-    ctx.lineTo(tX(t0), vY(0));
+    ctx.moveTo(tX(seg.t0), vY(seg.v0));
+    ctx.lineTo(tX(seg.t1), vY(seg.v1));
+    ctx.lineTo(tX(seg.t1), vY(0));
+    ctx.lineTo(tX(seg.t0), vY(0));
     ctx.closePath();
-    ctx.fillStyle = color;
+    ctx.fillStyle = fillColor;
     ctx.fill();
-  };
 
-  fillPhase(0,              t_acc,          0,    Vmax, '#3b82f618');
-  fillPhase(t_acc,          t_acc + t_const, Vmax, Vmax, '#22c55e18');
-  fillPhase(t_acc + t_const, totalT,         Vmax, 0,    '#f9731618');
-
-  // Outline trapezoid ───────────────────────────
-  ctx.beginPath();
-  ctx.moveTo(tX(0),              vY(0));
-  ctx.lineTo(tX(t_acc),          vY(Vmax));
-  ctx.lineTo(tX(t_acc + t_const),vY(Vmax));
-  ctx.lineTo(tX(totalT),         vY(0));
-  ctx.strokeStyle = '#1d4ed8'; ctx.lineWidth = 2.5;
-  ctx.stroke();
-
-  // Phase boundary labels ───────────────────────
-  const labelPhase = (t, label) => {
-    const x = tX(t);
-    ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 1;
-    ctx.setLineDash([4, 3]);
-    ctx.beginPath(); ctx.moveTo(x, PAD.top); ctx.lineTo(x, PAD.top + ph); ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = '#94a3b8'; ctx.font = '10px Inter,system-ui,sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText(label, x, PAD.top - 2);
-  };
-  if (t_acc > 0)   labelPhase(t_acc, `t_acc=${t_acc.toFixed(2)}s`);
-  if (t_const > 0) labelPhase(t_acc + t_const, `t_dec=${t_dec.toFixed(2)}s`);
-
-  // Step boundary dividers ──────────────────────
-  const COLORS = ['#1d4ed8','#16a34a','#b45309','#9333ea','#dc2626','#0891b2','#c2410c','#15803d'];
-  let cursor = 0;
-  state.steps.forEach((step, i) => {
-    const color = COLORS[i % COLORS.length];
-    const x0 = tX(cursor);
-    const x1 = tX(cursor + step.move_time);
-    const midX = (x0 + x1) / 2;
-
-    // Shade background band per step
-    const bandY = PAD.top + ph + 6;
-    ctx.fillStyle = color + '22';
-    ctx.fillRect(x0, PAD.top, x1 - x0, ph);
-    ctx.fillStyle = color;
-    ctx.fillRect(x0, bandY, x1 - x0, 6);
-
-    // Step name below band
-    ctx.fillStyle = color;
-    ctx.font = 'bold 10px Inter,system-ui,sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(step.label || `Step ${i+1}`, midX, bandY + 18);
-
-    // Right divider
-    if (i < state.steps.length - 1) {
-      ctx.strokeStyle = color + '88'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(x1, PAD.top); ctx.lineTo(x1, PAD.top + ph); ctx.stroke();
+    // Stroke top line only
+    if (strokeColor) {
+      ctx.beginPath();
+      ctx.moveTo(tX(seg.t0), vY(seg.v0));
+      ctx.lineTo(tX(seg.t1), vY(seg.v1));
+      ctx.strokeStyle = strokeColor; ctx.lineWidth = 2.5;
+      ctx.stroke();
     }
 
-    cursor += step.move_time;
+    // Step label
+    if (seg.type === 'step' && seg.v0 > 0) {
+      ctx.fillStyle = seg.color;
+      ctx.font = 'bold 11px Inter,system-ui,sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(seg.label, tX((seg.t0 + seg.t1) / 2), vY(seg.v0) - 8);
+    }
   });
 
-  // X-axis ticks ────────────────────────────────
+  // Vertical dividers at segment boundaries with time labels
+  const dividers = [
+    { t: t_acc,            label: `Acc\n${t_acc.toFixed(2)}s` },
+    ...(() => {
+      const marks = []; let c = t_acc;
+      steps.forEach((st, i) => {
+        c += st.move_time;
+        marks.push({ t: c, label: `${(st.label||'S'+(i+1))}\n${st.move_time.toFixed(2)}s` });
+        if (i < steps.length - 1 && state.dwell_time > 0) c += state.dwell_time;
+      });
+      return marks;
+    })(),
+  ];
+
+  dividers.forEach(d => {
+    const x = tX(d.t);
+    ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 1; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(x, PAD.top); ctx.lineTo(x, PAD.top + ph); ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  // X-axis ticks
   ctx.strokeStyle = '#d1d5db'; ctx.lineWidth = 1;
-  const xTicks = Math.min(10, Math.ceil(totalT / 0.5));
-  ctx.fillStyle = '#6b7280'; ctx.font = '10px Inter,system-ui,sans-serif'; ctx.textAlign = 'center';
+  const xTicks = Math.min(12, Math.ceil(fullT / 0.3));
   for (let k = 0; k <= xTicks; k++) {
-    const t = (k / xTicks) * totalT;
+    const t = (k / xTicks) * fullT;
     const x = tX(t);
     ctx.beginPath(); ctx.moveTo(x, PAD.top + ph); ctx.lineTo(x, PAD.top + ph + 4); ctx.stroke();
-    ctx.fillText(t.toFixed(1) + 's', x, PAD.top + ph + 14);
+    ctx.fillStyle = '#6b7280'; ctx.font = '10px Inter,system-ui,sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(t.toFixed(2) + 's', x, PAD.top + ph + 15);
   }
   ctx.fillStyle = '#374151'; ctx.textAlign = 'center';
   ctx.fillText('Time (s)', PAD.left + pw / 2, H - 4);
 
-  // Legend ──────────────────────────────────────
+  // Legend
   if (legend) {
     legend.innerHTML =
-      state.steps.map((st, i) => `
+      steps.map((st, i) => `
         <span style="display:flex;align-items:center;gap:5px;">
-          <span style="width:12px;height:12px;border-radius:3px;background:${COLORS[i%COLORS.length]};display:inline-block;flex-shrink:0;"></span>
-          <span><strong>${st.label||'Step '+(i+1)}</strong> ${st.move_time.toFixed(2)}s · ${st.stroke} mm</span>
+          <span style="width:12px;height:12px;border-radius:3px;background:${STEP_COLORS[i%STEP_COLORS.length]};display:inline-block;flex-shrink:0;"></span>
+          <strong>${st.label||'Step '+(i+1)}</strong>&nbsp;${st.move_time.toFixed(2)}s · ${st.stroke} mm · ${stepV[i].toFixed(1)} mm/s
         </span>`).join('') +
       `<span style="margin-left:auto;font-weight:700;color:var(--text);white-space:nowrap;">
-        Acc ${t_acc.toFixed(2)}s &nbsp;|&nbsp; Const ${t_const.toFixed(2)}s &nbsp;|&nbsp; Dec ${t_dec.toFixed(2)}s &nbsp;|&nbsp; Total ${totalT.toFixed(2)}s
+        Acc ${t_acc.toFixed(2)}s &nbsp;|&nbsp; Dec ${t_dec.toFixed(2)}s &nbsp;|&nbsp; Total ${fullT.toFixed(2)}s
       </span>`;
   }
 }

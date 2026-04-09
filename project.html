@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>TITAN — Project</title>
+<title>ClusterVise — Project</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -109,13 +109,7 @@ footer{text-align:center;font-size:11px;color:var(--sub);padding:16px;border-top
 
 <header>
   <div class="brand">
-    <svg width="28" height="28" viewBox="0 0 32 32">
-      <rect width="32" height="32" rx="6" fill="#fff" opacity=".12"/>
-      <rect x="4" y="14" width="24" height="4" rx="2" fill="#fff"/>
-      <rect x="10" y="7" width="4" height="18" rx="2" fill="#fff"/>
-      <rect x="18" y="7" width="4" height="18" rx="2" fill="#fff"/>
-    </svg>
-    <h1>TITAN</h1>
+    <img src="clustervise-logo.svg" alt="ClusterVise" style="height:36px;filter:brightness(0) invert(1);" />
   </div>
   <a class="nav-back" href="index.html">
     <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
@@ -166,7 +160,7 @@ footer{text-align:center;font-size:11px;color:var(--sub);padding:16px;border-top
 
 </div>
 
-<footer>Titan Machine Building &amp; Automation · Servo Sizing Suite · v3.0</footer>
+<footer>ClusterVise · Servo Sizing Suite · v3.0</footer>
 
 <!-- Edit Project Modal -->
 <div class="modal-overlay" id="modal-overlay">
@@ -238,7 +232,7 @@ footer{text-align:center;font-size:11px;color:var(--sub);padding:16px;border-top
   /* ── Project info ── */
   function renderInfo() {
     const p = Projects.get(projectId);
-    document.title = 'TITAN — ' + p.name;
+    document.title = 'ClusterVise — ' + p.name;
     document.getElementById('proj-name').textContent = p.name;
     const meta = [p.customer, p.machine].filter(Boolean).join(' · ');
     document.getElementById('proj-meta').textContent = meta || 'No customer or machine info set.';

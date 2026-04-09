@@ -9,8 +9,9 @@ const DEFAULT_STATE = {
   project_service_life: 10,
   project_accuracy: 10,
   dwell_time: 0.1,
+  acc_pct: 25,
   steps: [
-    { label: 'Step 1', stroke: 15, move_time: 1.0, acc_pct: 25, external_force: 250, load_mass: 1.0, tilt_deg: 45 }
+    { label: 'Step 1', stroke: 15, move_time: 1.0, external_force: 250, load_mass: 1.0, tilt_deg: 45 }
   ],
   mu: 0.03,
   guide_force: 15,
@@ -110,14 +111,14 @@ function normalizeState() {
   state.project_service_life = Math.max(0, Number(state.project_service_life) || 0);
   state.project_accuracy = Math.max(0, Number(state.project_accuracy) || 0);
   state.dwell_time = Math.max(0, Number(state.dwell_time) || 0);
+  state.acc_pct = Math.min(80, Math.max(1, Number(state.acc_pct) || 25));
   if (!Array.isArray(state.steps) || state.steps.length === 0) {
-    state.steps = [{ label: 'Step 1', stroke: 15, move_time: 1.0, acc_pct: 25, external_force: 250, load_mass: 1.0, tilt_deg: 45 }];
+    state.steps = [{ label: 'Step 1', stroke: 15, move_time: 1.0, external_force: 250, load_mass: 1.0, tilt_deg: 45 }];
   }
   state.steps = state.steps.slice(0, 8).map((step, index) => ({
     label: String(step.label || step.application || `Step ${index + 1}`),
     stroke: Math.max(0, Number(step.stroke) || 0),
     move_time: Math.max(0.05, Number(step.move_time) || 0.05),
-    acc_pct: Math.min(80, Math.max(1, Number(step.acc_pct) || 25)),
     external_force: Number(step.external_force) || 0,
     load_mass: Math.max(0, Number(step.load_mass) || 0),
     tilt_deg: Number(step.tilt_deg) || 0,
@@ -179,7 +180,7 @@ function calculateStepGroup(steps) {
 
   steps.forEach(step => {
     const available_time = Math.max(step.move_time - state.dwell_time, 0.01);
-    const t_acc   = Math.min(available_time / 2, available_time * (step.acc_pct / 100));
+    const t_acc   = Math.min(available_time / 2, available_time * (state.acc_pct / 100));
     const t_dec   = t_acc;
     const t_const = Math.max(0, available_time - t_acc - t_dec);
 
@@ -587,7 +588,7 @@ function renderBestMotorSuggestion(result) {
 function renderMovementSteps() {
   const container = document.getElementById('movement-steps-container');
   if (!container) return;
-  const steps = Array.isArray(state.steps) && state.steps.length ? state.steps : [{ label: 'Step 1', stroke: 15, move_time: 1.0, acc_pct: 25, external_force: 250, load_mass: 1.0, tilt_deg: 45 }];
+  const steps = Array.isArray(state.steps) && state.steps.length ? state.steps : [{ label: 'Step 1', stroke: 15, move_time: 1.0, external_force: 250, load_mass: 1.0, tilt_deg: 45 }];
 
   container.innerHTML = steps.map((step, index) => `
     <div class="step-card" data-step="${index}" style="
@@ -612,11 +613,6 @@ function renderMovementSteps() {
         <div class="field-row">
           <label>Move time (s)
             <input data-step="${index}" data-field="move_time" type="number" step="0.01" value="${step.move_time}" style="padding:8px 10px;font-size:13px;" />
-          </label>
-        </div>
-        <div class="field-row">
-          <label>Accel time (%)
-            <input data-step="${index}" data-field="acc_pct" type="number" step="1" value="${step.acc_pct}" style="padding:8px 10px;font-size:13px;" />
           </label>
         </div>
         <div class="field-row">
@@ -694,8 +690,7 @@ function parseExcelStepRows(rows) {
     if (label.includes('application') || label.includes('op') || label.includes('operation')) columnMap.set(index, 'label');
     else if (label.includes('stroke')) columnMap.set(index, 'stroke');
     else if (label.includes('move time')) columnMap.set(index, 'move_time');
-    else if (label.includes('acc') && label.includes('pct')) columnMap.set(index, 'acc_pct');
-    else if (label.includes('acceleration')) columnMap.set(index, 'acc_pct');
+    else if (label.includes('acc') || label.includes('acceleration')) columnMap.set(index, '_ignore_acc');
     else if (label.includes('external force')) columnMap.set(index, 'external_force');
     else if (label.includes('load mass') || label.includes('moving mass')) columnMap.set(index, 'load_mass');
     else if (label.includes('tilt')) columnMap.set(index, 'tilt_deg');
@@ -705,7 +700,7 @@ function parseExcelStepRows(rows) {
   for (let i = headerRowIndex + 1; i < rows.length; i += 1) {
     const row = rows[i];
     if (!Array.isArray(row) || row.every(cell => cell === null || cell === undefined || String(cell).trim() === '')) continue;
-    const step = { stroke: 0, move_time: 0.05, acc_pct: 25, external_force: 0, load_mass: 0, tilt_deg: 0 };
+    const step = { stroke: 0, move_time: 0.05, external_force: 0, load_mass: 0, tilt_deg: 0 };
     let rowHasData = false;
 
     for (const [col, field] of columnMap.entries()) {
@@ -736,7 +731,6 @@ function parseExcelStepRows(rows) {
       label: String(step.label || `Step ${index + 1}`),
       stroke: step.stroke,
       move_time: step.move_time,
-      acc_pct: step.acc_pct,
       external_force: step.external_force,
       load_mass: step.load_mass,
       tilt_deg: step.tilt_deg,
@@ -763,7 +757,7 @@ function parseExcelValues(rows) {
     ['moving mass', 'load_mass'],
     ['guide moving mass', 'guide_mass'],
     ['tilt angle of the setup', 'tilt_deg'],
-    ['acceleration time %', 'acc_pct'],
+    ['acceleration time %', '_ignore'],
     ['ball screw pitch', 'bs_pitch'],
     ['ball screw efficiency', 'bs_efficiency'],
     ['ball screw friction torque', 'bs_friction_torque'],
@@ -837,7 +831,6 @@ function addMovementStep() {
     label: `Step ${state.steps.length + 1}`,
     stroke: 15,
     move_time: 1.0,
-    acc_pct: 25,
     external_force: 250,
     load_mass: 1.0,
     tilt_deg: 45,

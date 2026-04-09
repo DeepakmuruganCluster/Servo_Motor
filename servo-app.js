@@ -492,25 +492,51 @@ function renderGearboxSuggestion(result) {
   }
   suggestion.innerHTML = note;
 
+  const activeRatio = state.gb_ratio;
+
   tbody.innerHTML = rows.map(row => {
+    const isActive = row.ratio === activeRatio;
     const isBest = row.ratio === best.ratio;
-    const viable = row.speedOk && row.torqueOk;
-    const badge = viable ? 'badge-ok' : 'badge-fail';
-    const saving = row.ratio > 1 && directTorque > 0
+    const isViable = row.speedOk && row.torqueOk;
+    const badge = isViable ? 'badge-ok' : 'badge-fail';
+    const rowSaving = row.ratio > 1 && directTorque > 0
       ? Math.round((1 - row.motorTorque / directTorque) * 100)
       : 0;
-    const savingTxt = saving > 0
-      ? `<span style="color:var(--success);font-weight:600">&#8595; ${saving}% smaller motor</span>`
+    const savingTxt = rowSaving > 0
+      ? `<span style="color:var(--success);font-weight:600">&#8595; ${rowSaving}% smaller motor</span>`
       : `<span style="color:var(--muted)">baseline</span>`;
+    const activeBadge = isActive ? ' <span style="font-size:10px;background:var(--accent);color:#fff;padding:1px 6px;border-radius:99px;vertical-align:middle">active</span>' : '';
     return `
-      <tr class="${isBest ? 'selected' : ''}">
-        <td>${isBest ? '&#9733; ' : ''}${row.ratio}:1</td>
+      <tr class="${isActive ? 'selected' : ''}" data-ratio="${row.ratio}"
+          style="cursor:pointer" title="Click to apply ${row.ratio}:1 and auto-suggest motor">
+        <td>${isBest ? '&#9733; ' : ''}${row.ratio}:1${activeBadge}</td>
         <td class="mono">${row.motorTorque.toFixed(2)} Nm</td>
         <td class="mono">${Math.round(row.motorSpeed)} rpm</td>
         <td>${savingTxt}</td>
-        <td><span class="badge ${badge}">${viable ? 'Viable' : 'Not viable'}</span></td>
+        <td><span class="badge ${badge}">${isViable ? 'Viable' : 'Not viable'}</span></td>
       </tr>`;
   }).join('');
+
+  tbody.querySelectorAll('tr').forEach(tr => {
+    tr.addEventListener('click', () => {
+      const ratio = Number(tr.dataset.ratio);
+      state.gb_ratio = ratio;
+      // Update the input field visually
+      const inp = document.querySelector('[data-key="gb_ratio"]');
+      if (inp) inp.value = ratio;
+      saveState();
+      const newResult = calculate();
+      // Auto-suggest best motor for new ratio (soft — user can override)
+      const best = suggestBestMotor(newResult);
+      if (best) {
+        selectedMotorIdx = best.index;
+        saveState();
+        render();
+      } else {
+        render();
+      }
+    });
+  });
 }
 
 function suggestBestMotor(result) {

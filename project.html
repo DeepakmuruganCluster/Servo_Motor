@@ -111,10 +111,17 @@ footer{text-align:center;font-size:11px;color:var(--sub);padding:16px;border-top
   <div class="brand">
     <img src="clustervise-logo-white.svg" alt="ClusterVise" style="height:36px;" />
   </div>
-  <a class="nav-back" href="index.html">
-    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
-    All Projects
-  </a>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <a class="nav-back" href="index.html">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+      All Projects
+    </a>
+    <button onclick="sessionStorage.removeItem('titan_auth');window.location.replace('login.html');" title="Sign out"
+      style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;padding:7px 13px;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;">
+      <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      Sign out
+    </button>
+  </div>
 </header>
 
 <div class="main">

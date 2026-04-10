@@ -175,3 +175,64 @@
 
   global.Projects = Projects;
 })(window);
+
+/**
+ * Confidence score for a servo state object.
+ * Formula: (must×0.60 + critical×0.30 + additional×0.10) × 0.9 (Application Selection Method)
+ * Returns integer 0–90.
+ */
+function calculateConfidence(state) {
+  if (!state) return 0;
+
+  const hasPK = state.has_parallel_kit === true || Number(state.has_parallel_kit) === 1;
+  const steps = Array.isArray(state.steps) && state.steps.length > 0 ? state.steps : null;
+  const s0 = steps ? steps[0] : {};
+
+  // 1 if value was explicitly provided (non-zero finite number), 0 otherwise
+  function direct(val) {
+    const n = Number(val);
+    return (val !== undefined && val !== null && Number.isFinite(n) && n !== 0) ? 1 : 0;
+  }
+
+  // Must have (60%) — 16 parameters per spec
+  const must = [
+    steps && direct(s0.stroke)              ? 1 : 0,  // Movement stroke
+    steps && direct(s0.move_time)           ? 1 : 0,  // Cycle time for movement
+    steps                                   ? 1 : 0,  // External force (0 N is valid)
+    steps && direct(s0.load_mass)           ? 1 : 0,  // Moving mass
+    steps                                   ? 1 : 0,  // Tilt angle (0° is valid)
+    direct(state.project_accuracy),                   // Movement accuracy
+    direct(state.bs_pitch),                           // Ball screw pitch
+    0,                                                // Ball screw dia — not collected ⚠
+    hasPK ? direct(state.pk_ratio)          : 1,     // PK gear ratio
+    hasPK ? direct(state.pk_no_load_torque) : 1,     // PK no-load torque
+    hasPK ? direct(state.pk_inertia)        : 1,     // PK inertia
+    hasPK ? direct(state.pk_max_torque)     : 1,     // PK max torque
+    hasPK ? direct(state.pk_max_speed)      : 1,     // PK max speed
+    direct(state.guide_force),                        // Guide displacement force
+    direct(state.guide_mass),                         // Guide moving mass
+    0,                                                // Guide max withstand force — not collected ⚠
+  ];
+
+  // Critical (30%) — 4 parameters
+  const crit = [
+    direct(state.project_operating_time),  // Operating time per cycle
+    direct(state.acc_pct),                 // Acceleration %
+    direct(state.safety_factor),           // Safety factor %
+    direct(state.bs_friction_torque),      // BS friction torque
+  ];
+
+  // Additional (10%) — 7 parameters
+  const add = [
+    direct(state.project_shifts),          // Shifts per day
+    direct(state.project_hours_shift),     // Hours per shift
+    0.5,                                   // Hours per day — always derived
+    direct(state.project_days_week),       // Days per week
+    direct(state.project_total_cycle),     // Total cycle time
+    direct(state.project_service_life),    // Service life
+    0,                                     // Guide service life — not collected ⚠
+  ];
+
+  const avg = arr => arr.reduce((a, b) => a + b, 0) / arr.length;
+  return Math.round((avg(must) * 0.60 + avg(crit) * 0.30 + avg(add) * 0.10) * 0.9 * 100);
+}

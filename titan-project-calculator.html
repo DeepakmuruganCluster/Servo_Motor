@@ -294,37 +294,6 @@
       </section>
 
       <!-- ═══════════════════════════════════════
-           FULL WIDTH — PRIMARY RESULTS
-           (after Mechanical Configuration)
-      ════════════════════════════════════════════ -->
-      <section class="card" style="grid-column: 1 / -1;">
-        <h2>Primary Results</h2>
-        <div class="section-block">
-          <h3>At Ball screw shaft</h3>
-          <div class="metric-grid">
-            <div class="metric-card"><span>Torque Required at ball screw shaft</span><strong id="out_tpeak_bs">—</strong></div>
-            <div class="metric-card"><span>Speed Required at ball screw shaft</span><strong id="out_nscrew">—</strong></div>
-            <div class="metric-card"><span>Linear Speed of the ball screw shaft</span><strong id="out_vmax">—</strong></div>
-          </div>
-        </div>
-        <div class="section-block">
-          <h3>At Motor shaft</h3>
-          <div class="metric-grid">
-            <div class="metric-card"><span>Torque Required at Motor shaft</span><strong id="out_tpeak_motor">—</strong></div>
-            <div class="metric-card"><span>Speed Required at Motor shaft</span><strong id="out_nmotor">—</strong></div>
-          </div>
-        </div>
-        <!-- Hidden holders so JS renderMetric calls don't break -->
-        <span id="out_amax" style="display:none"></span>
-        <span id="out_tload" style="display:none"></span>
-        <span id="out_faxial" style="display:none"></span>
-        <span id="out_taccel" style="display:none"></span>
-        <span id="out_trms" style="display:none"></span>
-        <span id="out_inertia" style="display:none"></span>
-        <span id="out_inertia_ratio" style="display:none"></span>
-      </section>
-
-      <!-- ═══════════════════════════════════════
            FULL WIDTH — OPERATING CONDITIONS
            How long and how often does this run?
            (needed for RMS torque / duty cycle)
@@ -384,70 +353,22 @@
       ════════════════════════════════════════════ -->
       <section class="card" style="grid-column: 1 / -1;">
         <h2>Primary Results</h2>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
-          <div class="section-block">
-            <h3>Ball screw shaft</h3>
-            <table style="border-collapse:collapse;width:100%;">
-              <thead><tr style="background:var(--surface-strong);">
-                <th style="padding:8px 12px;text-align:left;font-size:12px;color:var(--muted);font-weight:600;">Parameter</th>
-                <th style="padding:8px 12px;text-align:right;font-size:12px;color:var(--muted);font-weight:600;">Value</th>
-                <th style="padding:8px 12px;text-align:left;font-size:12px;color:var(--muted);font-weight:600;">Unit</th>
-              </tr></thead>
-              <tbody>
-                <tr style="border-top:1px solid var(--border);">
-                  <td style="padding:9px 12px;font-size:13px;">Torque required</td>
-                  <td style="padding:9px 12px;font-size:15px;font-weight:700;text-align:right;font-family:monospace;" id="out_tpeak_bs">—</td>
-                  <td style="padding:9px 12px;font-size:12px;color:var(--muted);">Nm</td>
-                </tr>
-                <tr style="border-top:1px solid var(--border);background:var(--surface-strong);">
-                  <td style="padding:9px 12px;font-size:13px;">Speed required</td>
-                  <td style="padding:9px 12px;font-size:15px;font-weight:700;text-align:right;font-family:monospace;" id="out_nscrew">—</td>
-                  <td style="padding:9px 12px;font-size:12px;color:var(--muted);">rpm</td>
-                </tr>
-                <tr style="border-top:1px solid var(--border);">
-                  <td style="padding:9px 12px;font-size:13px;">Linear speed</td>
-                  <td style="padding:9px 12px;font-size:15px;font-weight:700;text-align:right;font-family:monospace;" id="out_vmax">—</td>
-                  <td style="padding:9px 12px;font-size:12px;color:var(--muted);">mm/s</td>
-                </tr>
-              </tbody>
-            </table>
+        <div class="section-block">
+          <h3>At Ball screw shaft</h3>
+          <div class="metric-grid">
+            <div class="metric-card"><span>Torque Required at ball screw shaft</span><strong id="out_tpeak_bs">—</strong></div>
+            <div class="metric-card"><span>Speed Required at ball screw shaft</span><strong id="out_nscrew">—</strong></div>
+            <div class="metric-card"><span>Linear Speed of the ball screw shaft</span><strong id="out_vmax">—</strong></div>
           </div>
-          <div class="section-block">
-            <h3>Motor shaft</h3>
-            <table style="border-collapse:collapse;width:100%;">
-              <thead><tr style="background:var(--surface-strong);">
-                <th style="padding:8px 12px;text-align:left;font-size:12px;color:var(--muted);font-weight:600;">Parameter</th>
-                <th style="padding:8px 12px;text-align:right;font-size:12px;color:var(--muted);font-weight:600;">Value</th>
-                <th style="padding:8px 12px;text-align:left;font-size:12px;color:var(--muted);font-weight:600;">Unit</th>
-              </tr></thead>
-              <tbody>
-                <tr style="border-top:1px solid var(--border);">
-                  <td style="padding:9px 12px;font-size:13px;">Torque required</td>
-                  <td style="padding:9px 12px;font-size:15px;font-weight:700;text-align:right;font-family:monospace;" id="out_tpeak_motor">—</td>
-                  <td style="padding:9px 12px;font-size:12px;color:var(--muted);">Nm</td>
-                </tr>
-                <tr style="border-top:1px solid var(--border);background:var(--surface-strong);">
-                  <td style="padding:9px 12px;font-size:13px;">Speed required</td>
-                  <td style="padding:9px 12px;font-size:15px;font-weight:700;text-align:right;font-family:monospace;" id="out_nmotor">—</td>
-                  <td style="padding:9px 12px;font-size:12px;color:var(--muted);">rpm</td>
-                </tr>
-                <tr style="border-top:1px solid var(--border);">
-                  <td style="padding:9px 12px;font-size:13px;">RMS torque</td>
-                  <td style="padding:9px 12px;font-size:15px;font-weight:700;text-align:right;font-family:monospace;" id="out_trms">—</td>
-                  <td style="padding:9px 12px;font-size:12px;color:var(--muted);">Nm</td>
-                </tr>
-                <tr style="border-top:1px solid var(--border);background:var(--surface-strong);">
-                  <td style="padding:9px 12px;font-size:13px;">Reflected inertia</td>
-                  <td style="padding:9px 12px;font-size:15px;font-weight:700;text-align:right;font-family:monospace;" id="out_inertia">—</td>
-                  <td style="padding:9px 12px;font-size:12px;color:var(--muted);">kg·mm²</td>
-                </tr>
-                <tr style="border-top:1px solid var(--border);">
-                  <td style="padding:9px 12px;font-size:13px;">Inertia ratio</td>
-                  <td style="padding:9px 12px;font-size:15px;font-weight:700;text-align:right;font-family:monospace;" id="out_inertia_ratio">—</td>
-                  <td style="padding:9px 12px;font-size:12px;color:var(--muted);"></td>
-                </tr>
-              </tbody>
-            </table>
+        </div>
+        <div class="section-block">
+          <h3>At Motor shaft</h3>
+          <div class="metric-grid">
+            <div class="metric-card"><span>Torque Required at Motor shaft</span><strong id="out_tpeak_motor">—</strong></div>
+            <div class="metric-card"><span>Speed Required at Motor shaft</span><strong id="out_nmotor">—</strong></div>
+            <div class="metric-card"><span>RMS Torque</span><strong id="out_trms">—</strong></div>
+            <div class="metric-card"><span>Reflected Inertia</span><strong id="out_inertia">—</strong></div>
+            <div class="metric-card"><span>Inertia Ratio</span><strong id="out_inertia_ratio">—</strong></div>
           </div>
         </div>
       </section>

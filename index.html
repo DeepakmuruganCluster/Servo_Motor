@@ -175,6 +175,7 @@ footer{text-align:center;font-size:11px;color:var(--sub);padding:20px;border-top
       const chips = proj.servos.length
         ? proj.servos.map(s => statusChip(s.status)).join('')
         : '<span class="chip chip-new">No applications</span>';
+
       return `
         <div class="project-card" data-id="${proj.id}" tabindex="0" role="button" aria-label="Open project ${proj.name}">
           <div class="project-card-header">

@@ -104,6 +104,7 @@ header h1{font-size:18px;font-weight:800;letter-spacing:1.5px}
 
 footer{text-align:center;font-size:11px;color:var(--sub);padding:16px;border-top:1px solid var(--border)}
 </style>
+<script src="auth.js"></script>
 </head>
 <body>
 
@@ -140,7 +141,7 @@ footer{text-align:center;font-size:11px;color:var(--sub);padding:16px;border-top
   <!-- ── Upload project file ── -->
   <div class="upload-panel">
     <h3>Upload Project File</h3>
-    <p>Each row in the Excel file is one motor. Columns: <strong>Application, Stroke (mm), Move time (s), Accel %, Ext. force (N), Moving mass (kg), Tilt (°), BS pitch (mm), BS efficiency, BS friction (Nm), BS inertia (kg·m²), Guide force (N), Guide mass (kg), Drive type, Gear ratio, Gear efficiency, No-load torque (Nm), Gear inertia (kg·m²), Safety factor (%), Cycle time (s), Op. time (s), Shifts/day, Hours/shift, Days/week, Service life (yrs), Accuracy (µm).</strong></p>
+    <p>Upload the project Excel file (<strong>User input</strong> sheet). Row 2 must be the header row; each subsequent row is one application. Required columns: <strong>Stn no, Appl</strong> — plus any of: Total cycle time of machine, Total operating time per cycle, Expected service life of Machine, Movement Stroke required, Cycle time available for single movement, External Force on the moving mass, Moving mass, Tilt angle of the setup, Acceleration %, Safety factor %, Movement accuracy required (+/-), selected servo motor, Parallel Kit (Yes/No), Gearbox (Yes/No).</p>
     <div class="upload-row">
       <label class="upload-drop" id="upload-drop">
         <input type="file" id="project-file-input" accept=".xlsx,.xls" />
@@ -161,7 +162,13 @@ footer{text-align:center;font-size:11px;color:var(--sub);padding:16px;border-top
   <!-- ── Applications list ── -->
   <div class="section-head">
     <h3>Applications</h3>
-    <button class="btn btn-ghost btn-sm" id="add-app-btn">+ Add manually</button>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-ghost btn-sm" id="export-excel-btn">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export Excel
+      </button>
+      <button class="btn btn-ghost btn-sm" id="add-app-btn">+ Add manually</button>
+    </div>
   </div>
   <div id="app-list"></div>
 
@@ -208,8 +215,102 @@ footer{text-align:center;font-size:11px;color:var(--sub);padding:16px;border-top
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="auth.js"></script>
 <script src="projects.js"></script>
+<script>
+/* ── Embedded motor DB + auto-select (mirrors servo-app.js) ── */
+const _MOTOR_DB = [
+  { pn:'1FK2103-2AH00-0MA0', kW:0.28,  Mn:0.60, Nn:4500, Jmot:0.093, brake:false },
+  { pn:'1FK2103-2AH10-0MA0', kW:0.28,  Mn:0.60, Nn:4500, Jmot:0.093, brake:true  },
+  { pn:'1FK2103-4AH00-0MA0', kW:0.48,  Mn:1.27, Nn:4500, Jmot:0.14,  brake:false },
+  { pn:'1FK2103-4AH10-0MA0', kW:0.48,  Mn:1.27, Nn:4500, Jmot:0.14,  brake:true  },
+  { pn:'1FK2104-4AF00-0MA0', kW:0.40,  Mn:1.27, Nn:3000, Jmot:0.35,  brake:false },
+  { pn:'1FK2104-4AF10-0MA0', kW:0.40,  Mn:1.27, Nn:3000, Jmot:0.35,  brake:true  },
+  { pn:'1FK2104-4AK00-0MA0', kW:0.60,  Mn:0.90, Nn:6000, Jmot:0.35,  brake:false },
+  { pn:'1FK2104-4AK10-0MA0', kW:0.60,  Mn:0.90, Nn:6000, Jmot:0.35,  brake:true  },
+  { pn:'1FK2104-5AF00-0MA0', kW:0.75,  Mn:2.40, Nn:3000, Jmot:0.56,  brake:false },
+  { pn:'1FK2104-5AF10-0MA0', kW:0.75,  Mn:2.40, Nn:3000, Jmot:0.56,  brake:true  },
+  { pn:'1FK2104-5AK00-0MA0', kW:0.107, Mn:1.50, Nn:6000, Jmot:0.56,  brake:false },
+  { pn:'1FK2104-5AK10-0MA0', kW:0.107, Mn:1.50, Nn:6000, Jmot:0.56,  brake:true  },
+  { pn:'1FK2104-6AF00-0MA0', kW:1.00,  Mn:3.20, Nn:3000, Jmot:0.76,  brake:false },
+  { pn:'1FK2104-6AF10-0MA0', kW:1.00,  Mn:3.20, Nn:3000, Jmot:0.76,  brake:true  },
+];
+const G = 9.81;
+
+function autoSelectMotor(st) {
+  /* Compact replication of calculateStepGroup + suggestBestMotor from servo-app.js */
+  const eff_ratio = (st.pk_ratio || 1) * (st.gb_ratio || 1);
+  const eff_eff   = (st.bs_efficiency || 0.98) * (eff_ratio > 1 ? (st.gb_efficiency || 0.97) : 1);
+  const pitch_m   = (st.bs_pitch || 5) / 1000;
+  const perm_ir   = st.sm_permitted_inertia_ratio || 7;
+  const steps     = st.steps || [];
+
+  let Nmotor = 0, T_peak_motor = 0, I_motor = 0;
+
+  steps.forEach(step => {
+    const avail  = Math.max((step.move_time || 1) - (st.dwell_time || 0.1), 0.01);
+    const t_acc  = Math.min(avail / 2, avail * ((st.acc_pct || 25) / 100));
+    const Vmax   = avail > t_acc ? (step.stroke || 0) / 1000 / (avail - t_acc) : 0;
+    const amax   = t_acc > 0 ? Vmax / t_acc : 0;
+    const Nsc    = pitch_m > 0 ? Vmax * 1000 / (st.bs_pitch || 5) * 60 : 0;
+    const Nm     = Nsc * eff_ratio;
+
+    const theta  = ((step.tilt_deg || 0) * Math.PI) / 180;
+    const mass   = (step.load_mass || 0) + (st.guide_mass || 0);
+    const Fax    = Math.abs((step.external_force || 0)
+                   + mass * G * Math.sin(theta)
+                   + mass * G * Math.cos(theta) * (st.mu || 0.03))
+                   + (st.guide_force || 0);
+    const T_bs_load = pitch_m > 0
+      ? (Fax * pitch_m) / (2 * Math.PI * (st.bs_efficiency || 0.98))
+        + (st.bs_friction_torque || 0) + (st.pk_no_load_torque || 0)
+      : 0;
+
+    const J_ref  = (mass * Math.pow(pitch_m / (2 * Math.PI), 2))
+                   + (st.bs_inertia || 0) + (st.pk_inertia || 0) + (st.gb_inertia || 0);
+    const alpha  = pitch_m > 0 ? amax * 2 * Math.PI / pitch_m : 0;
+    const T_acc  = J_ref * alpha;
+    const T_pbs  = (T_bs_load + T_acc) * (1 + (st.safety_factor || 20) / 100);
+    const T_pm   = eff_ratio > 0 ? T_pbs / (eff_ratio * eff_eff) + (st.gb_no_load_torque || 0) : 0;
+    const Im     = eff_ratio > 0 ? J_ref / Math.pow(eff_ratio, 2) : 0;
+
+    Nmotor       = Math.max(Nmotor, Nm);
+    T_peak_motor = Math.max(T_peak_motor, T_pm);
+    I_motor      = Math.max(I_motor, Im);
+  });
+
+  const needsBrake = steps.some(s => Number(s.tilt_deg || 0) !== 0);
+
+  const scored = _MOTOR_DB.map((m, idx) => {
+    const Jr = m.Jmot * 1e-4;
+    const sU = Nmotor / m.Nn;
+    const tU = T_peak_motor / m.Mn;
+    const iU = (I_motor + Jr) / Jr / perm_ir;
+    const ok = sU <= 1 && tU <= 1 && iU <= 1 && (!needsBrake || m.brake);
+    return { m, idx, ok, score: m.kW * 1000 + sU + tU + iU, sU, tU, iU };
+  });
+
+  const pass = scored.filter(r => r.ok).sort((a, b) => a.score - b.score);
+  const best = pass[0] || null;
+  if (!best) return null;
+
+  return {
+    motorIdx: best.idx,
+    motor: best.m.pn,
+    status: 'PASS',
+    metrics: {
+      Nmotor: Math.round(Nmotor),
+      T_peak_motor: +T_peak_motor.toFixed(3),
+      inertia_ratio: +((I_motor + best.m.Jmot * 1e-4) / (best.m.Jmot * 1e-4)).toFixed(3),
+      speedUtil:   Math.round(best.sU * 100),
+      torqueUtil:  Math.round(best.tU * 100),
+      inertiaUtil: Math.round(best.iU * 100),
+      motorKW: best.m.kW,
+      motorMn: best.m.Mn,
+      motorNn: best.m.Nn,
+    },
+  };
+}
+</script>
 <script>
 (function () {
   'use strict';
@@ -261,7 +362,8 @@ footer{text-align:center;font-size:11px;color:var(--sub);padding:16px;border-top
       return;
     }
 
-    container.innerHTML = `<div class="app-grid">${p.servos.map(app => {
+    const servos = p.servos;
+    container.innerHTML = `<div class="app-grid">${servos.map((app, idx) => {
       // Show key params from saved state if available
       let params = '';
       if (app.state) {
@@ -275,8 +377,14 @@ footer{text-align:center;font-size:11px;color:var(--sub);padding:16px;border-top
           s.gb_ratio && s.gb_ratio !== 1 ? `GB ${s.gb_ratio}:1` : null,
         ].filter(Boolean).join(' · ');
       }
+      const mx = app.metrics;
+      const utilHtml = mx
+        ? `<div style="font-size:11px;color:var(--sub);margin-top:2px;">
+             N:${mx.speedUtil}% &nbsp;T:${mx.torqueUtil}% &nbsp;J:${mx.inertiaUtil}%
+           </div>`
+        : '';
       return `
-      <div class="app-card">
+      <div class="app-card" data-idx="${idx}">
         <div class="app-card-header">
           <div class="app-name">${escHtml(app.name)}</div>
           ${statusBadge(app.status)}
@@ -284,36 +392,44 @@ footer{text-align:center;font-size:11px;color:var(--sub);padding:16px;border-top
         ${params ? `<div class="app-params">${escHtml(params)}</div>` : ''}
         <div>
           ${app.motor
-            ? `<div class="app-motor">${escHtml(app.motor)}</div>`
+            ? `<div class="app-motor">${escHtml(app.motor)}</div>${utilHtml}`
             : `<div class="app-motor-none">No motor selected yet</div>`}
           <div class="app-updated">Last edited ${fmtDate(app.lastUpdated)}</div>
         </div>
         <div class="app-actions">
-          <button class="btn btn-primary btn-sm launch-btn" data-id="${app.id}">
+          <button class="btn btn-primary btn-sm launch-btn">
             <svg width="12" height="12" fill="currentColor" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
             Open
           </button>
-          <button class="btn btn-ghost btn-sm rename-btn" data-id="${app.id}" data-name="${escHtml(app.name)}">Rename</button>
-          <button class="btn btn-danger btn-sm delete-btn" data-id="${app.id}" data-name="${escHtml(app.name)}">Delete</button>
+          <button class="btn btn-ghost btn-sm rename-btn">Rename</button>
+          <button class="btn btn-danger btn-sm delete-btn">Delete</button>
         </div>
       </div>`}).join('')}</div>`;
 
-    container.querySelectorAll('.launch-btn').forEach(b =>
-      b.addEventListener('click', () => Projects.launchServo(projectId, b.dataset.id)));
+    container.querySelectorAll('.app-card').forEach(card => {
+      const idx = Number(card.dataset.idx);
+      const servo = servos[idx];
+      if (!servo) return;
 
-    container.querySelectorAll('.rename-btn').forEach(b =>
-      b.addEventListener('click', () => {
-        const name = prompt('Rename application:', b.dataset.name);
-        if (name && name.trim()) { renameApp(b.dataset.id, name.trim()); renderApps(); }
-      }));
+      card.querySelector('.launch-btn').addEventListener('click', e => {
+        e.stopPropagation();
+        Projects.launchServo(projectId, servo.id);
+      });
 
-    container.querySelectorAll('.delete-btn').forEach(b =>
-      b.addEventListener('click', () => {
-        if (confirm(`Delete application "${b.dataset.name}"? This cannot be undone.`)) {
-          Projects.deleteServo(projectId, b.dataset.id);
+      card.querySelector('.rename-btn').addEventListener('click', e => {
+        e.stopPropagation();
+        const name = prompt('Rename application:', servo.name);
+        if (name && name.trim()) { renameApp(servo.id, name.trim()); renderApps(); }
+      });
+
+      card.querySelector('.delete-btn').addEventListener('click', e => {
+        e.stopPropagation();
+        if (confirm(`Delete application "${servo.name}"? This cannot be undone.`)) {
+          Projects.deleteServo(projectId, servo.id);
           renderApps();
         }
-      }));
+      });
+    });
   }
 
   function renameApp(servoId, name) {
@@ -327,64 +443,79 @@ footer{text-align:center;font-size:11px;color:var(--sub);padding:16px;border-top
   }
 
   /* ══════════════════════════════════════════════════
-     EXCEL IMPORT — one row per motor
+     EXCEL IMPORT — reads 'User input' sheet
+     Layout: Row 2 = headers (horizontal), Rows 3+ = data
+     Col B = Stn no, Col C = Appl, Cols D-N,P = parameters
   ══════════════════════════════════════════════════ */
 
-  // Map of lowercase header keywords → state key (or 'name' / step field)
-  const COL_MAP = [
-    [['application','name','op','axis'],         'name'],
-    [['stroke'],                                  'step:stroke'],
-    [['move time','move_time','t move','t_move'], 'step:move_time'],
-    [['accel','acceleration'],                    'step:acc_pct'],
-    [['ext force','external force','f ext','force'],'step:external_force'],
-    [['moving mass','load mass','mass'],           'step:load_mass'],
-    [['tilt'],                                    'step:tilt_deg'],
-    [['bs pitch','pitch'],                        'bs_pitch'],
-    [['bs efficiency','bs eff'],                  'bs_efficiency'],
-    [['bs friction','friction torque'],           'bs_friction_torque'],
-    [['bs inertia'],                              'bs_inertia'],
-    [['guide force'],                             'guide_force'],
-    [['guide mass'],                              'guide_mass'],
-    [['pk ratio','parallel kit ratio','pk_ratio'], 'pk_ratio'],
-    [['pk no load','pk no-load','pk noload'],     'pk_no_load_torque'],
-    [['pk inertia'],                              'pk_inertia'],
-    [['pk max torque'],                           'pk_max_torque'],
-    [['pk max speed'],                            'pk_max_speed'],
-    [['gb ratio','gear ratio','ratio'],           'gb_ratio'],
-    [['gb efficiency','gear efficiency','gear eff'],'gb_efficiency'],
-    [['gb no load','no load','no-load','noload'], 'gb_no_load_torque'],
-    [['gb inertia','gear inertia'],               'gb_inertia'],
-    [['backlash'],                                'gb_backlash'],
-    [['safety factor','safety'],                  'safety_factor'],
-    [['cycle time','t cycle'],                    'project_total_cycle'],
-    [['op time','operating time','on time'],      'project_operating_time'],
-    [['shifts'],                                  'project_shifts'],
-    [['hours per shift','hrs per shift','hours','hrs'], 'project_hours_shift'],
-    [['days per week','days week','days'],         'project_days_week'],
-    [['service life','life yrs','life'],          'project_service_life'],
-    [['accuracy'],                                'project_accuracy'],
-  ];
+  // Exact header text from Excel User input row 2 → state key mapping
+  const USER_INPUT_COL_MAP = {
+    'stn no':                                   'stn_no',
+    'appl':                                     'appl',
+    // Operating conditions
+    'no of shifts per day':                     'project_shifts',
+    'shifts per day':                           'project_shifts',
+    'working hours per shift':                  'project_hours_shift',
+    'hours per shift':                          'project_hours_shift',
+    'working days per week':                    'project_days_week',
+    'days per week':                            'project_days_week',
+    'total cycle time of machine':              'project_total_cycle',
+    'total operating time per cycle':           'project_operating_time',
+    'expected service life of machine':         'project_service_life',
+    'expected service life':                    'project_service_life',
+    // Motion
+    'movement stroke required':                 'step:stroke',
+    'stroke':                                   'step:stroke',
+    'cycle time available for single movement': 'step:move_time',
+    'cycle time for movement':                  'step:move_time',
+    'external force on the moving mass':        'step:external_force',
+    'external force':                           'step:external_force',
+    'moving mass':                              'step:load_mass',
+    'tilt angle of the setup':                  'step:tilt_deg',
+    'tilt angle':                               'step:tilt_deg',
+    'acceleration %':                           'acc_pct',
+    'acceleration':                             'acc_pct',
+    'accel %':                                  'acc_pct',
+    'safety factor %':                          'safety_factor',
+    'safety factor':                            'safety_factor',
+    'movement accuracy required (+/-)':         'project_accuracy',
+    'movement accuracy required':               'project_accuracy',
+    'accuracy':                                 'project_accuracy',
+    'selected servo motor':                     'motor_name',
+    // Additional columns
+    'parallel kit needed':                      'has_parallel_kit',
+    'parallel kit':                             'has_parallel_kit',
+    'gearbox needed':                           'has_gearbox',
+    'gearbox':                                  'has_gearbox',
+    'gb':                                       'has_gearbox',
+  };
 
   const DEFAULT_STATE = {
     project_shifts:3, project_hours_shift:7, project_days_week:6,
     project_total_cycle:7, project_operating_time:2.6,
     project_service_life:10, project_accuracy:10, dwell_time:0.1,
-    steps:[{label:'Step 1',stroke:15,move_time:1.0,acc_pct:25,external_force:250,load_mass:1.0,tilt_deg:45}],
+    acc_pct:25, safety_factor:20,
+    steps:[{label:'Step 1',stroke:15,move_time:1.0,external_force:250,load_mass:1.0,tilt_deg:45}],
     mu:0.03, guide_force:15, guide_mass:1.6,
     bs_pitch:2, bs_efficiency:0.98, bs_inertia:1.0704e-5, bs_friction_torque:0.05,
-    pk_ratio:1, pk_no_load_torque:0.07, pk_inertia:2.67e-5, pk_max_torque:3, pk_max_speed:6000,
-    gb_ratio:1, gb_efficiency:1.0, gb_no_load_torque:0, gb_inertia:0, gb_backlash:0,
-    safety_factor:20,
+    bs_max_speed:12000, bs_max_torque:3, bs_repetition_accuracy:10,
+    has_parallel_kit:1, pk_ratio:1, pk_no_load_torque:0.07, pk_inertia:2.67e-5, pk_max_torque:3, pk_max_speed:6000,
+    has_gearbox:0, gb_ratio:1, gb_efficiency:0.97, gb_no_load_torque:0.01, gb_inertia:0, gb_backlash:7,
+    gb_rated_input_speed:0, gb_rated_output_torque:0,
+    sm_permitted_inertia_ratio:7, sm_encoder_ppr:1048576,
   };
 
   function normaliseHeader(h) {
-    return String(h||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+    return String(h||'').toLowerCase().replace(/[^a-z0-9+()/-]+/g,' ').trim();
   }
 
-  function matchHeader(h) {
+  function matchUserInputHeader(h) {
     const norm = normaliseHeader(h);
-    for (const [keywords, key] of COL_MAP) {
-      if (keywords.some(k => norm.includes(k))) return key;
+    // Exact match
+    if (USER_INPUT_COL_MAP[norm]) return USER_INPUT_COL_MAP[norm];
+    // Partial match
+    for (const [k, v] of Object.entries(USER_INPUT_COL_MAP)) {
+      if (norm.includes(k) || k.includes(norm)) return v;
     }
     return null;
   }
@@ -395,60 +526,101 @@ footer{text-align:center;font-size:11px;color:var(--sub);padding:16px;border-top
     reader.onload = e => {
       try {
         const wb = XLSX.read(new Uint8Array(e.target.result), { type:'array' });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(ws, { header:1, blankrows:false });
-        if (rows.length < 2) { showStatus('File must have a header row and at least one data row.', true); return; }
 
-        // Find header row (first row with at least 3 non-empty cells)
-        const headerIdx = rows.findIndex(r => Array.isArray(r) && r.filter(c => c != null && String(c).trim()).length >= 3);
-        if (headerIdx < 0) { showStatus('Could not find a valid header row.', true); return; }
+        // Use 'User input' sheet by name; fall back to first sheet
+        const sheetName = wb.SheetNames.find(n => n.toLowerCase().replace(/\s+/g,'') === 'userinput')
+                       || wb.SheetNames[0];
+        const ws = wb.Sheets[sheetName];
 
-        // Build column index → state key
-        const headers = rows[headerIdx];
-        const colKeys = headers.map(h => matchHeader(h));
+        // Read all rows including blanks so row indices match Excel row numbers
+        const allRows = XLSX.utils.sheet_to_json(ws, { header:1, blankrows:true });
 
-        let added = 0, skipped = 0;
-        for (let i = headerIdx + 1; i < rows.length; i++) {
-          const row = rows[i];
-          if (!Array.isArray(row) || row.every(c => c == null || String(c).trim() === '')) continue;
+        // Find header row: the row where col B (index 1) = 'Stn no' (case-insensitive)
+        // Fallback: first row with 3+ non-empty cells
+        let headerIdx = allRows.findIndex(r =>
+          Array.isArray(r) && normaliseHeader(r[1] || '') === 'stn no'
+        );
+        if (headerIdx < 0) {
+          headerIdx = allRows.findIndex(r =>
+            Array.isArray(r) && r.filter(c => c != null && String(c).trim()).length >= 3
+          );
+        }
+        if (headerIdx < 0) { showStatus('Could not find header row in User input sheet.', true); return; }
 
-          // Build state object for this motor
+        // Build column index → state key from header row
+        const headers = allRows[headerIdx];
+        const colKeys = headers.map(h => matchUserInputHeader(h));
+
+        let added = 0, updated = 0;
+        for (let i = headerIdx + 1; i < allRows.length; i++) {
+          const row = allRows[i];
+          if (!Array.isArray(row)) continue;
+          // Skip entirely blank rows
+          if (row.every(c => c == null || String(c).trim() === '')) continue;
+
           const motorState = JSON.parse(JSON.stringify(DEFAULT_STATE));
-          motorState.steps = [{ label:'Step 1', stroke:15, move_time:1.0, acc_pct:25, external_force:250, load_mass:1.0, tilt_deg:45 }];
-          let appName = null;
+          let stnNo   = '';
+          let applStr = '';
+          let motorName = null;
 
           colKeys.forEach((key, col) => {
             if (!key || col >= row.length) return;
             const raw = row[col];
             if (raw == null || String(raw).trim() === '') return;
 
-            if (key === 'name') {
-              appName = String(raw).trim();
+            if (key === 'stn_no') {
+              stnNo = String(raw).trim();
+            } else if (key === 'appl') {
+              applStr = String(raw).trim();
+            } else if (key === 'motor_name') {
+              motorName = String(raw).trim();
+            } else if (key === 'has_parallel_kit' || key === 'has_gearbox') {
+              const v = String(raw).trim().toLowerCase();
+              motorState[key] = (v === 'yes' || v === '1' || v === 'true') ? 1 : 0;
             } else if (key.startsWith('step:')) {
               const field = key.slice(5);
-              motorState.steps[0][field] = parseFloat(raw) || 0;
-              motorState.steps[0].label = appName || `Row ${i}`;
+              const num = parseFloat(raw);
+              if (!isNaN(num)) motorState.steps[0][field] = num;
             } else {
               const num = parseFloat(raw);
               if (!isNaN(num)) motorState[key] = num;
             }
           });
 
-          if (!appName) { skipped++; continue; }
+          // Application name = Stn no + ' ' + Appl  (e.g. "OP10 App-1")
+          const appName = [stnNo, applStr].filter(Boolean).join(' ');
+          if (!appName) continue; // skip rows with no station/application
+
+          motorState.steps[0].label = appName;
+
+          // Auto-select best motor from state
+          const autoResult = autoSelectMotor(motorState);
+          const motorPN     = motorName || (autoResult ? autoResult.motor   : null);
+          const motorIdx    = autoResult ? autoResult.motorIdx : -1;
+          const motorStatus = autoResult ? autoResult.status   : 'NEW';
+          const motorMeta   = autoResult ? autoResult.metrics  : null;
 
           // Add or update application in project
           const existing = Projects.get(projectId)?.servos.find(s => s.name === appName);
           if (existing) {
-            Projects.updateServo(projectId, existing.id, { state: motorState, status: 'NEW' });
+            Projects.updateServo(projectId, existing.id, {
+              state: motorState, motor: motorPN, motorIdx,
+              status: motorStatus, metrics: motorMeta,
+            });
+            updated++;
           } else {
             const sid = Projects.addServo(projectId, appName);
-            Projects.updateServo(projectId, sid, { state: motorState, status: 'NEW' });
+            Projects.updateServo(projectId, sid, {
+              state: motorState, motor: motorPN, motorIdx,
+              status: motorStatus, metrics: motorMeta,
+            });
+            added++;
           }
-          added++;
         }
 
-        const msg = `Imported ${added} motor${added !== 1 ? 's' : ''}` +
-          (skipped ? ` (${skipped} row${skipped!==1?'s':''} skipped — no application name)` : '') + '.';
+        const msg = `Imported ${added + updated} application${added + updated !== 1 ? 's' : ''}`
+          + (added    ? ` (${added} new)`     : '')
+          + (updated  ? ` (${updated} updated)` : '') + '.';
         showStatus(msg, false);
         renderApps();
       } catch (err) {
@@ -476,6 +648,7 @@ footer{text-align:center;font-size:11px;color:var(--sub);padding:16px;border-top
       'GB ratio','GB efficiency','GB no-load (Nm)','GB inertia (kg·m²)','Backlash (arcmin)',
       'Safety factor (%)','Cycle time (s)','Op. time (s)',
       'Shifts/day','Hours/shift','Days/week','Service life (yrs)','Accuracy (µm)',
+      'Parallel Kit needed','Gearbox needed',
     ];
     const example = [
       'OP10', 50, 1.0, 25, 100, 5, 0,
@@ -483,6 +656,7 @@ footer{text-align:center;font-size:11px;color:var(--sub);padding:16px;border-top
       1, 0.07, 2.67e-5, 3, 6000,
       3, 0.95, 0.07, 0, 0,
       20, 7, 2.6, 3, 7, 6, 10, 10,
+      'Yes', 'No',
     ];
     const ws = XLSX.utils.aoa_to_sheet([headers, example]);
     const wb = { SheetNames:['Motors'], Sheets:{ Motors:ws } };
@@ -491,14 +665,18 @@ footer{text-align:center;font-size:11px;color:var(--sub);padding:16px;border-top
     const a = document.createElement('a');
     a.href = url; a.download = 'titan-project-template.xlsx';
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   /* ── File drop / input ── */
   const fileInput = document.getElementById('project-file-input');
   const dropZone = document.getElementById('upload-drop');
 
-  fileInput.addEventListener('change', e => { if (e.target.files[0]) parseProjectExcel(e.target.files[0]); });
-  dropZone.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', e => {
+    const file = e.target.files[0];
+    fileInput.value = '';
+    if (file) parseProjectExcel(file);
+  });
   dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('over'); });
   dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
   dropZone.addEventListener('drop', e => {
@@ -553,15 +731,176 @@ footer{text-align:center;font-size:11px;color:var(--sub);padding:16px;border-top
     if (!name) { document.getElementById('inp-app-name').focus(); return; }
     document.getElementById('app-modal-overlay').classList.remove('open');
     const sid = Projects.addServo(projectId, name);
-    if (sid) Projects.launchServo(projectId, sid);
+    if (sid) {
+      // Auto-select motor from default state before launching
+      const autoResult = autoSelectMotor(DEFAULT_STATE);
+      if (autoResult) {
+        Projects.updateServo(projectId, sid, {
+          state: DEFAULT_STATE,
+          motor: autoResult.motor,
+          motorIdx: autoResult.motorIdx,
+          status: autoResult.status,
+          metrics: autoResult.metrics,
+        });
+      }
+      Projects.launchServo(projectId, sid);
+    }
   });
   document.getElementById('inp-app-name').addEventListener('keydown', e => {
     if (e.key === 'Enter') document.getElementById('app-modal-create').click();
   });
 
+  /* ── Excel export ── */
+  function exportProjectExcel() {
+    if (!window.XLSX) { alert('XLSX library not loaded.'); return; }
+    const p = Projects.get(projectId);
+    const dateStr = new Date().toLocaleDateString(undefined, { day:'numeric', month:'long', year:'numeric' });
+
+    const aoa = [];
+    aoa.push(['ClusterVise — Servo Sizing Report']);
+    aoa.push([dateStr]);
+    aoa.push(['Project:', p.name]);
+    if (p.customer) aoa.push(['Customer:', p.customer]);
+    if (p.machine)  aoa.push(['Machine:', p.machine]);
+    aoa.push([]);
+
+    // Header row
+    aoa.push([
+      'Application', 'Status', 'Selected Motor',
+      'Speed req. (rpm)', 'Torque req. (Nm)', 'Inertia Ratio',
+      'Speed util %', 'Torque util %', 'Inertia util %',
+      'Stroke (mm)', 'Move time (s)', 'BS Pitch (mm)',
+      'PK Ratio', 'GB Ratio', 'Brake needed',
+    ]);
+
+    p.servos.forEach(servo => {
+      const s = servo.state || {};
+      const step = (s.steps && s.steps[0]) || {};
+      const mx = servo.metrics || {};
+
+      aoa.push([
+        servo.name,
+        servo.status || 'NEW',
+        servo.motor || '',
+        mx.Nmotor != null ? mx.Nmotor : '',
+        mx.T_peak_motor != null ? mx.T_peak_motor : '',
+        mx.inertia_ratio != null ? mx.inertia_ratio : '',
+        mx.speedUtil != null ? mx.speedUtil + '%' : '',
+        mx.torqueUtil != null ? mx.torqueUtil + '%' : '',
+        mx.inertiaUtil != null ? mx.inertiaUtil + '%' : '',
+        step.stroke || '',
+        step.move_time || '',
+        s.bs_pitch || '',
+        s.pk_ratio || '',
+        s.gb_ratio || '',
+        (s.steps || []).some(st => Number(st.tilt_deg) !== 0) ? 'Yes' : 'No',
+      ]);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    // Column widths
+    ws['!cols'] = [24,10,30,16,16,14,12,12,12,12,12,12,10,10,14].map(w => ({ wch: w }));
+
+    // Bold the header row (find it: first row with 'Application' in col A)
+    const hdrRowIdx = aoa.findIndex(r => r[0] === 'Application');
+    if (hdrRowIdx >= 0) {
+      const numCols = aoa[hdrRowIdx].length;
+      for (let c = 0; c < numCols; c++) {
+        const cellAddr = XLSX.utils.encode_cell({ r: hdrRowIdx, c });
+        if (ws[cellAddr]) {
+          ws[cellAddr].s = { font: { bold: true }, fill: { fgColor: { rgb: '1F3864' }, patternType: 'solid' }, font: { bold: true, color: { rgb: 'FFFFFF' } } };
+        }
+      }
+      // Freeze header row
+      ws['!freeze'] = { xSplit: 0, ySplit: hdrRowIdx + 1 };
+    }
+
+    const wb = { SheetNames:['Project Summary'], Sheets:{ 'Project Summary': ws } };
+    const buf = XLSX.write(wb, { bookType:'xlsx', type:'array', cellStyles: true });
+    const url = URL.createObjectURL(new Blob([buf], { type:'application/octet-stream' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ClusterVise_${p.name.replace(/[^a-z0-9]/gi,'_')}_Report.xlsx`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  document.getElementById('export-excel-btn').addEventListener('click', exportProjectExcel);
+
+  /* ── Backfill: recalculate metrics for all servos that have state.
+       - If servo has no motor yet → auto-select best.
+       - If servo has a motor but metrics are stale/missing → recompute metrics
+         using the stored motorIdx (keep user's manual motor choice, just refresh metrics).
+       - If stored motor is no longer viable for saved state → auto-select new best.
+  ── */
+  function backfillMotorSelections() {
+    const p = Projects.get(projectId);
+    let changed = false;
+    p.servos.forEach(servo => {
+      if (!servo.state) return;
+
+      // Always recompute fresh metrics from current state
+      const result = autoSelectMotor(servo.state);
+
+      // Determine which motor to keep
+      let motorPN   = servo.motor;
+      let motorIdx  = servo.motorIdx >= 0 ? servo.motorIdx : -1;
+      let motorMeta = result ? result.metrics : null;
+      let status    = servo.status;
+
+      if (motorIdx >= 0) {
+        // Check if stored motor is still viable with current state
+        const m = _MOTOR_DB[motorIdx];
+        if (m && result) {
+          const Jr = m.Jmot * 1e-4;
+          const im = result.metrics;
+          const Nmotor = im ? im.Nmotor : 0;
+          const Tpeak  = im ? im.T_peak_motor : 0;
+          const Ir     = im ? im.inertia_ratio : 0;
+          const permIr = (servo.state.sm_permitted_inertia_ratio || 7);
+          const needsBrake = (servo.state.steps || []).some(s => Number(s.tilt_deg || 0) !== 0);
+          const viable = Nmotor <= m.Nn && Tpeak <= m.Mn && Ir <= permIr && (!needsBrake || m.brake);
+          if (!viable && result) {
+            // Stored motor is invalid — switch to best available
+            motorPN  = result.motor;
+            motorIdx = result.motorIdx;
+            status   = result.status;
+          }
+        }
+        // Refresh metrics with correct utilization against the kept motor
+        if (motorMeta && motorIdx >= 0) {
+          const m2 = _MOTOR_DB[motorIdx];
+          if (m2) {
+            motorMeta = Object.assign({}, motorMeta, {
+              speedUtil:   Math.round((motorMeta.Nmotor || 0) / m2.Nn * 100),
+              torqueUtil:  Math.round((motorMeta.T_peak_motor || 0) / m2.Mn * 100),
+              inertiaUtil: Math.round((motorMeta.inertia_ratio || 0) / (servo.state.sm_permitted_inertia_ratio || 7) * 100),
+              motorKW: m2.kW, motorMn: m2.Mn, motorNn: m2.Nn,
+            });
+          }
+        }
+      } else if (result) {
+        // No motor stored — auto-select
+        motorPN  = result.motor;
+        motorIdx = result.motorIdx;
+        status   = result.status;
+      }
+
+      if (!servo.metrics || JSON.stringify(servo.metrics) !== JSON.stringify(motorMeta)
+          || servo.motor !== motorPN || servo.motorIdx !== motorIdx) {
+        Projects.updateServo(projectId, servo.id, {
+          motor: motorPN, motorIdx, status, metrics: motorMeta,
+        });
+        changed = true;
+      }
+    });
+    return changed;
+  }
+
   /* ── Init ── */
   renderInfo();
-  renderApps();
+  if (backfillMotorSelections()) renderApps();
+  else renderApps();
 })();
 </script>
 </body>

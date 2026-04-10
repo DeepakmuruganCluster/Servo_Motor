@@ -20,32 +20,46 @@ const DEFAULT_STATE = {
   bs_efficiency: 0.98,
   bs_inertia: 1.0704e-5,
   bs_friction_torque: 0.05,
+  bs_max_speed: 12000,       // calc C321 — Ball screw permitted velocity (rpm)
+  bs_max_torque: 3,          // calc C334 — Ball screw permitted driving torque (Nm)
+  bs_repetition_accuracy: 10,// calc C198 — Ball screw repetition accuracy (micron)
   // Parallel kit
+  has_parallel_kit: true,
   pk_ratio: 1,
   pk_no_load_torque: 0.07,
   pk_inertia: 2.67e-5,
   pk_max_torque: 3,
   pk_max_speed: 6000,
   // Gearbox
+  has_gearbox: false,
   gb_ratio: 1,
-  gb_efficiency: 1.0,
-  gb_no_load_torque: 0,
+  gb_efficiency: 0.97,
+  gb_no_load_torque: 0.01,
   gb_inertia: 0,
-  gb_backlash: 0,
+  gb_backlash: 7,
+  gb_rated_input_speed: 0,   // calc C298 — GB Rated Input Speed (rpm)
+  gb_rated_output_torque: 0, // calc C304 — GB Rated Output Torque (Nm)
+  // Servo motor specs
+  sm_permitted_inertia_ratio: 7, // calc C57 — SM Permitted Inertia Ratio
+  sm_encoder_ppr: 1048576,       // calc C59 — SM Encoder resolution (ppr)
   safety_factor: 20,
 };
 
 const MOTOR_DB = [
-  { pn:'1FK2102-1AG10-1MA0', series:'1FK2', kW:0.10, M0:0.32, Tmax:0.96, Nmax:6000, J:0.052, bits:20, desc:'0.32 Nm · 3000 rpm' },
-  { pn:'1FK2104-4AF00-1MA0', series:'1FK2', kW:0.40, M0:1.27, Tmax:3.81, Nmax:7200, J:0.330, bits:20, desc:'1.27 Nm · 3000 rpm' },
-  { pn:'1FK2105-6AF10-1MA0', series:'1FK2', kW:2.10, M0:6.70, Tmax:20.10, Nmax:6000, J:5.000, bits:20, desc:'6.70 Nm · 3000 rpm' },
-  { pn:'1FK2204-5AF00-1MA0', series:'1FK2', kW:0.75, M0:2.40, Tmax:7.20, Nmax:6000, J:1.200, bits:20, desc:'2.40 Nm · 3000 rpm' },
-  { pn:'1FK2206-4AF10-1MA0', series:'1FK2', kW:2.70, M0:8.60, Tmax:25.80, Nmax:6000, J:6.000, bits:20, desc:'8.60 Nm · 3000 rpm' },
-  { pn:'1FK7032-2AK71-1CB0', series:'1FK7', kW:0.50, M0:1.15, Tmax:3.45, Nmax:9000, J:1.300, bits:24, desc:'1.15 Nm · 6000 rpm' },
-  { pn:'1FK7042-2AF71-1RH0', series:'1FK7', kW:0.82, M0:3.00, Tmax:9.00, Nmax:6000, J:3.200, bits:24, desc:'3.00 Nm · 3000 rpm' },
-  { pn:'1FT7034-5AK71-1CH0', series:'1FT7', kW:0.88, M0:1.40, Tmax:4.20, Nmax:9000, J:1.000, bits:22, desc:'1.40 Nm · 6000 rpm' },
-  { pn:'1FT7044-5AF70-1CH0', series:'1FT7', kW:1.35, M0:5.00, Tmax:15.00, Nmax:6000, J:5.430, bits:22, desc:'5.00 Nm · 3000 rpm' },
-  { pn:'1PH8133-1HG03-1QA2', series:'1PH8', kW:15.00, M0:47.75, Tmax:95.50, Nmax:6000, J:120.0, bits:11, desc:'47.75 Nm · 3000 rpm' },
+  { pn:'1FK2103-2AH00-0MA0', series:'1FK2', kW:0.28,  Mn:0.60, Mmax:1.95,  Nn:4500, Nmax:8000, Jmot:0.093, brake:false },
+  { pn:'1FK2103-2AH10-0MA0', series:'1FK2', kW:0.28,  Mn:0.60, Mmax:1.95,  Nn:4500, Nmax:8000, Jmot:0.093, brake:true  },
+  { pn:'1FK2103-4AH00-0MA0', series:'1FK2', kW:0.48,  Mn:1.27, Mmax:4.05,  Nn:4500, Nmax:8000, Jmot:0.14,  brake:false },
+  { pn:'1FK2103-4AH10-0MA0', series:'1FK2', kW:0.48,  Mn:1.27, Mmax:4.05,  Nn:4500, Nmax:8000, Jmot:0.14,  brake:true  },
+  { pn:'1FK2104-4AF00-0MA0', series:'1FK2', kW:0.40,  Mn:1.27, Mmax:3.75,  Nn:3000, Nmax:7200, Jmot:0.35,  brake:false },
+  { pn:'1FK2104-4AF10-0MA0', series:'1FK2', kW:0.40,  Mn:1.27, Mmax:3.75,  Nn:3000, Nmax:7200, Jmot:0.35,  brake:true  },
+  { pn:'1FK2104-4AK00-0MA0', series:'1FK2', kW:0.60,  Mn:0.90, Mmax:3.85,  Nn:6000, Nmax:8000, Jmot:0.35,  brake:false },
+  { pn:'1FK2104-4AK10-0MA0', series:'1FK2', kW:0.60,  Mn:0.90, Mmax:3.85,  Nn:6000, Nmax:8000, Jmot:0.35,  brake:true  },
+  { pn:'1FK2104-5AF00-0MA0', series:'1FK2', kW:0.75,  Mn:2.40, Mmax:7.50,  Nn:3000, Nmax:6700, Jmot:0.56,  brake:false },
+  { pn:'1FK2104-5AF10-0MA0', series:'1FK2', kW:0.75,  Mn:2.40, Mmax:7.50,  Nn:3000, Nmax:6700, Jmot:0.56,  brake:true  },
+  { pn:'1FK2104-5AK00-0MA0', series:'1FK2', kW:1.07, Mn:1.50, Mmax:7.60,  Nn:6000, Nmax:8000, Jmot:0.56,  brake:false },
+  { pn:'1FK2104-5AK10-0MA0', series:'1FK2', kW:1.07, Mn:1.50, Mmax:7.60,  Nn:6000, Nmax:8000, Jmot:0.56,  brake:true  },
+  { pn:'1FK2104-6AF00-0MA0', series:'1FK2', kW:1.00,  Mn:3.20, Mmax:10.0,  Nn:3000, Nmax:7200, Jmot:0.76,  brake:false },
+  { pn:'1FK2104-6AF10-0MA0', series:'1FK2', kW:1.00,  Mn:3.20, Mmax:10.0,  Nn:3000, Nmax:7200, Jmot:0.76,  brake:true  },
 ];
 
 let state = {};
@@ -243,14 +257,16 @@ function calculate() {
   const overallResult = calculateStepGroup(state.steps);
 
   const selectedMotor = MOTOR_DB[selectedMotorIdx] || null;
-  const J_rotor = selectedMotor ? selectedMotor.J * 1e-4 : null;
+  const J_rotor = selectedMotor ? selectedMotor.Jmot * 1e-4 : null;
   const inertia_ratio = selectedMotor ? (overallResult.I_motor + J_rotor) / J_rotor : null;
 
+  const needsBrake = state.steps.some(s => Number(s.tilt_deg) !== 0);
+
   const checks = {
-    speed: overallResult.Nmotor <= (selectedMotor ? selectedMotor.Nmax : 10000),
-    peak: overallResult.T_peak_motor <= (selectedMotor ? selectedMotor.Tmax : 9999),
-    rms: overallResult.T_rms_motor <= (selectedMotor ? selectedMotor.M0 * 0.7 : 9999),
-    inertia: selectedMotor ? inertia_ratio <= 10 : true,
+    speed: overallResult.Nmotor <= (selectedMotor ? selectedMotor.Nn : 10000),
+    torque: overallResult.T_peak_motor <= (selectedMotor ? selectedMotor.Mn : 9999),
+    inertia: selectedMotor ? inertia_ratio <= state.sm_permitted_inertia_ratio : true,
+    brake: !needsBrake || (selectedMotor ? selectedMotor.brake : false),
     ball_screw_speed: overallResult.Nscrew <= 6000,
     ball_screw_accel: overallResult.amax <= 5,
   };
@@ -273,6 +289,26 @@ function render() {
   const result = calculate();
   lastResult = result;
 
+  // Auto-select best motor if:
+  //   a) none selected, OR
+  //   b) currently selected motor is no longer viable (user changed parameters)
+  const _curMotor = selectedMotorIdx >= 0 ? MOTOR_DB[selectedMotorIdx] : null;
+  const _needsBrakeCheck = state.steps.some(s => Number(s.tilt_deg) !== 0);
+  const _curViable = _curMotor && (() => {
+    const Jr = _curMotor.Jmot * 1e-4;
+    return result.Nmotor <= _curMotor.Nn
+        && result.T_peak_motor <= _curMotor.Mn
+        && (result.I_motor + Jr) / Jr <= state.sm_permitted_inertia_ratio
+        && (!_needsBrakeCheck || _curMotor.brake);
+  })();
+  if (!_curViable) {
+    const best = suggestBestMotor(result);
+    if (best && best.viable) {
+      selectedMotorIdx = best.index;
+      saveMotorSelection();
+    }
+  }
+
   renderProjectSummary();
 
   // Ball screw shaft
@@ -289,10 +325,14 @@ function render() {
   if (irEl) irEl.textContent = result.inertia_ratio !== null ? result.inertia_ratio.toFixed(2) : '—';
 
   renderMotorTable(result);
-  renderSelectedMotorDetails(result);
   renderBestMotorSuggestion(result);
   renderGearboxSuggestion(result);
   renderVerification(result);
+  renderMotionProfileChart();
+
+  // Wire download button each render (result changes)
+  const dlBtn = document.getElementById('download-report-btn');
+  if (dlBtn) { dlBtn.onclick = () => downloadReport(result); }
 }
 
 function renderProjectSummary() {
@@ -309,7 +349,6 @@ function renderProjectSummary() {
       <div class="summary-card"><span>Cycle time</span><strong>${formatNumber(cycleHours, 1)} s</strong></div>
       <div class="summary-card"><span>Estimated cycles/year</span><strong>${formatInteger(annualCycles)}</strong></div>
       <div class="summary-card"><span>Movement accuracy</span><strong>${formatNumber(state.project_accuracy, 0)} µm</strong></div>
-      <div class="summary-card"><span>Axis duty rate</span><strong>${formatNumber((state.project_operating_time / cycleHours) * 100, 0)}%</strong></div>
     </div>
   `;
 }
@@ -318,27 +357,46 @@ function renderMotorTable(result) {
   const tbody = document.getElementById('motor-table-body');
   if (!tbody) return;
 
-  const rows = MOTOR_DB.map((motor, index) => {
-    const J_rotor = motor.J * 1e-4;
-    const speedOk = result.Nmotor <= motor.Nmax;
-    const peakOk = result.T_peak_motor <= motor.Tmax;
-    const rmsOk = result.T_rms_motor <= motor.M0 * 0.7;
-    const inertiaOk = (result.I_motor + J_rotor) / J_rotor <= 10;
-    const viable = speedOk && peakOk && rmsOk && inertiaOk;
-    const status = viable ? 'PASS' : 'FAIL';
-    const badgeClass = viable ? 'badge-ok' : 'badge-fail';
-    const rowClass = index === selectedMotorIdx ? 'selected' : '';
+  const needsBrakeTable = state.steps.some(s => Number(s.tilt_deg) !== 0);
 
+  // Score all motors using same logic as suggestBestMotor: lowest kW first, then lowest utilization
+  const scored = MOTOR_DB.map((motor, index) => {
+    const J_rotor    = motor.Jmot * 1e-4;
+    const speedUtil  = result.Nmotor / motor.Nn;
+    const torqueUtil = result.T_peak_motor / motor.Mn;
+    const inertiaUtil= (result.I_motor + J_rotor) / J_rotor / state.sm_permitted_inertia_ratio;
+    const speedOk    = speedUtil <= 1;
+    const torqueOk   = torqueUtil <= 1;
+    const inertiaOk  = inertiaUtil <= 1;
+    const brakeOk    = !needsBrakeTable || motor.brake;
+    const viable     = speedOk && torqueOk && inertiaOk && brakeOk;
+    const score      = motor.kW * 1000 + (torqueUtil + speedUtil + inertiaUtil);
+    return { motor, index, viable, score, speedUtil, torqueUtil, inertiaUtil };
+  });
+
+  const passMotors = scored.filter(m => m.viable).sort((a, b) => a.score - b.score);
+
+  if (passMotors.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:16px;color:var(--muted)">No motor in catalog meets the current requirements.</td></tr>`;
+    return;
+  }
+
+  const rows = passMotors.map(({ motor, index, speedUtil, torqueUtil, inertiaUtil }, rank) => {
+    const rowClass = index === selectedMotorIdx ? 'selected' : '';
     return `
-      <tr class="${rowClass}" data-index="${index}">
-        <td class="mono">${motor.pn}</td>
+      <tr class="${rowClass}" data-index="${index}" style="cursor:pointer">
+        <td class="mono" style="font-weight:700;color:var(--accent)">${rank + 1}</td>
+        <td class="mono">${rank === 0 ? '★ ' : ''}${motor.pn}</td>
         <td>${motor.series}</td>
-        <td class="mono">${motor.kW.toFixed(2)}</td>
-        <td class="mono">${motor.M0.toFixed(2)}</td>
-        <td class="mono">${motor.Tmax.toFixed(2)}</td>
-        <td class="mono">${motor.Nmax}</td>
-        <td class="mono">${motor.J.toFixed(3)}</td>
-        <td><span class="badge ${badgeClass}">${status}</span></td>
+        <td class="mono">${motor.kW.toFixed(3)}</td>
+        <td class="mono">${motor.Mn.toFixed(2)}</td>
+        <td class="mono">${motor.Mmax.toFixed(2)}</td>
+        <td class="mono">${motor.Nn}</td>
+        <td class="mono">${motor.Jmot.toFixed(3)}</td>
+        <td>${motor.brake ? 'Yes' : 'No'}</td>
+        <td style="font-size:11px;line-height:1.6">
+          N:${(speedUtil*100).toFixed(0)}% T:${(torqueUtil*100).toFixed(0)}% J:${(inertiaUtil*100).toFixed(0)}%
+        </td>
       </tr>`;
   }).join('');
 
@@ -346,7 +404,7 @@ function renderMotorTable(result) {
   tbody.querySelectorAll('tr').forEach(row => {
     row.addEventListener('click', () => {
       selectedMotorIdx = Number(row.dataset.index);
-      saveState();
+      saveMotorSelection();
       render();
     });
   });
@@ -362,87 +420,154 @@ function renderSelectedMotorDetails(result) {
   }
 
   const inertiaRatio = result.inertia_ratio !== null ? result.inertia_ratio.toFixed(2) : '—';
-  const speedUtil = result.Nmotor / motor.Nmax * 100;
-  const peakUtil = result.T_peak_motor / motor.Tmax * 100;
-  const rmsUtil = result.T_rms_motor / (motor.M0 * 0.7) * 100;
+  const speedUtil = result.Nmotor / motor.Nn * 100;
+  const torqueUtil = result.T_peak_motor / motor.Mn * 100;
+  const inertiaUtil = result.inertia_ratio !== null ? result.inertia_ratio / state.sm_permitted_inertia_ratio * 100 : 0;
 
   details.innerHTML = `
     <div class="metric-grid">
       <div class="metric-card"><span>Selected Motor</span><strong>${motor.pn}</strong></div>
-      <div class="metric-card"><span>Rated Torque M₀</span><strong>${motor.M0.toFixed(2)} Nm</strong></div>
-      <div class="metric-card"><span>Peak Torque Tmax</span><strong>${motor.Tmax.toFixed(2)} Nm</strong></div>
-      <div class="metric-card"><span>Rated Speed</span><strong>${motor.Nmax} rpm</strong></div>
+      <div class="metric-card"><span>Rated Torque Mn</span><strong>${motor.Mn.toFixed(2)} Nm</strong></div>
+      <div class="metric-card"><span>Peak Torque Mmax</span><strong>${motor.Mmax.toFixed(2)} Nm</strong></div>
+      <div class="metric-card"><span>Rated Speed Nn</span><strong>${motor.Nn} rpm</strong></div>
+      <div class="metric-card"><span>Brake</span><strong>${motor.brake ? 'Yes' : 'No'}</strong></div>
     </div>
     <div class="section-block">
       <table class="checklist">
         <tr><th>Parameter</th><th>Actual</th><th>Capacity</th><th>Utilisation</th></tr>
-        <tr><td>Motor speed</td><td class="mono">${Math.round(result.Nmotor)} rpm</td><td class="mono">${motor.Nmax} rpm</td><td class="mono">${speedUtil.toFixed(0)}%</td></tr>
-        <tr><td>Peak torque</td><td class="mono">${result.T_peak_motor.toFixed(3)} Nm</td><td class="mono">${motor.Tmax.toFixed(2)} Nm</td><td class="mono">${peakUtil.toFixed(0)}%</td></tr>
-        <tr><td>RMS torque</td><td class="mono">${result.T_rms_motor.toFixed(3)} Nm</td><td class="mono">${(motor.M0 * 0.7).toFixed(3)} Nm</td><td class="mono">${rmsUtil.toFixed(0)}%</td></tr>
-        <tr><td>Inertia ratio</td><td class="mono">${inertiaRatio}</td><td class="mono">10</td><td class="mono">${result.inertia_ratio !== null ? `${Math.round(result.inertia_ratio / 10 * 100)}%` : '—'}</td></tr>
+        <tr><td>Motor speed</td><td class="mono">${Math.round(result.Nmotor)} rpm</td><td class="mono">${motor.Nn} rpm</td><td class="mono">${speedUtil.toFixed(0)}%</td></tr>
+        <tr><td>Torque (Mn)</td><td class="mono">${result.T_peak_motor.toFixed(3)} Nm</td><td class="mono">${motor.Mn.toFixed(2)} Nm</td><td class="mono">${torqueUtil.toFixed(0)}%</td></tr>
+        <tr><td>Inertia ratio</td><td class="mono">${inertiaRatio}</td><td class="mono">${state.sm_permitted_inertia_ratio}</td><td class="mono">${result.inertia_ratio !== null ? `${Math.round(inertiaUtil)}%` : '—'}</td></tr>
       </table>
     </div>`;
+}
+
+/* Calculate total system accuracy — exact Excel formula (calc C208) */
+function calculateSystemAccuracy() {
+  const bs_acc   = state.bs_repetition_accuracy || 10; // micron (calc C198)
+  const gb_deg   = (state.gb_backlash || 0) / 60;      // arcmin → degrees
+  const gb_acc   = (gb_deg / 360 * state.bs_pitch) / 2 * 1000; // micron (calc C203)
+  const motor_mm = state.bs_pitch / (state.sm_encoder_ppr || 1048576); // mm/pulse (calc C205)
+  const motor_acc = motor_mm / 2 * 1000; // micron (calc C206)
+  return bs_acc + gb_acc + motor_acc; // calc C208 — linear sum
 }
 
 function renderVerification(result) {
   const tbody = document.getElementById('verification-body');
   if (!tbody) return;
   const motor = result.selectedMotor;
+
+  function fmtUtil(util) {
+    if (util === null || util === undefined || !isFinite(util)) return '#DIV/0!';
+    return (util * 100).toFixed(0) + '%';
+  }
+  function fmtResult(util, resultText) {
+    if (util === null || !isFinite(util)) return '#DIV/0!';
+    return resultText;
+  }
+  function resultClass(res) {
+    if (res === 'OK') return 'badge-ok';
+    if (res === 'NOK') return 'badge-fail';
+    if (res === '#DIV/0!') return 'badge-warn';
+    return 'badge-warn'; // Check Duty cycle, Wish list etc.
+  }
+
+  const sysAccuracy = calculateSystemAccuracy();
+
+  // Only rows marked BLUE in Excel Checklist sheet (fill FFC9DAF8)
   const rows = [
+    // ── Motor Parameters ──
     {
-      label: 'Ball screw speed limit',
-      actual: `${Math.round(result.Nscrew)} rpm`,
-      capacity: '6000 rpm',
-      ok: result.checks.ball_screw_speed,
-      remark: 'Typical spindle limit for ball screws',
+      section: 'Motor Parameters',
+      param: 'Motor Rated Speed Nn, rpm',
+      capacity: motor ? String(motor.Nn) : '—',
+      actual: String(Math.round(result.Nmotor)),
+      util: motor ? result.Nmotor / motor.Nn : null,
+      result: motor ? (result.Nmotor <= motor.Nn ? 'OK' : 'NOK') : '—',
+      remark: '',
     },
     {
-      label: 'Ball screw acceleration',
-      actual: `${result.amax.toFixed(2)} m/s²`,
-      capacity: '5 m/s²',
-      ok: result.checks.ball_screw_accel,
-      remark: 'Conservative stage acceleration limit',
+      section: '',
+      param: 'Motor Rated Torque Mn, Nm',
+      capacity: motor ? motor.Mn.toFixed(2) : '—',
+      actual: result.T_peak_motor.toFixed(2),
+      util: motor ? result.T_peak_motor / motor.Mn : null,
+      result: motor ? (result.T_peak_motor <= motor.Mn ? 'OK' : 'Check Duty cycle') : '—',
+      remark: '',
     },
     {
-      label: 'Motor speed',
-      actual: `${Math.round(result.Nmotor)} rpm`,
-      capacity: motor ? `${motor.Nmax} rpm` : 'Select motor',
-      ok: motor ? result.checks.speed : true,
-      remark: motor ? '' : 'Choose a motor',
+      section: '',
+      param: 'Motor Inertia Ratio',
+      capacity: String(state.sm_permitted_inertia_ratio),
+      actual: result.inertia_ratio !== null ? result.inertia_ratio.toFixed(2) : '—',
+      util: result.inertia_ratio !== null ? result.inertia_ratio / state.sm_permitted_inertia_ratio : null,
+      result: result.inertia_ratio !== null ? (result.inertia_ratio <= state.sm_permitted_inertia_ratio ? 'OK' : 'NOK') : '—',
+      remark: '',
+    },
+    // ── Gearbox ──
+    {
+      section: 'Gearbox',
+      param: 'GearBox Input speed, rpm',
+      capacity: state.gb_rated_input_speed > 0 ? String(Math.round(state.gb_rated_input_speed)) : '—',
+      actual: String(Math.round(result.Nmotor)),
+      util: state.gb_rated_input_speed > 0 ? result.Nmotor / state.gb_rated_input_speed : null,
+      result: state.gb_rated_input_speed > 0 ? (result.Nmotor <= state.gb_rated_input_speed ? 'OK' : 'NOK') : '#DIV/0!',
+      remark: '',
     },
     {
-      label: 'Motor peak torque',
-      actual: `${result.T_peak_motor.toFixed(3)} Nm`,
-      capacity: motor ? `${motor.Tmax.toFixed(2)} Nm` : 'Select motor',
-      ok: motor ? result.checks.peak : true,
-      remark: motor ? '' : 'Choose a motor',
+      section: '',
+      param: 'GearBox Output Torque, Nm',
+      capacity: state.gb_rated_output_torque > 0 ? String(state.gb_rated_output_torque.toFixed(2)) : '—',
+      actual: result.T_peak_bs.toFixed(2),
+      util: state.gb_rated_output_torque > 0 ? result.T_peak_bs / state.gb_rated_output_torque : null,
+      result: state.gb_rated_output_torque > 0 ? (result.T_peak_bs <= state.gb_rated_output_torque ? 'OK' : 'NOK') : '#DIV/0!',
+      remark: '',
+    },
+    // ── Ball screw ──
+    {
+      section: 'Ball screw',
+      param: 'Ball screw max speed, rpm',
+      capacity: String(Math.round(state.bs_max_speed)),
+      actual: String(Math.round(result.Nscrew)),
+      util: state.bs_max_speed > 0 ? result.Nscrew / state.bs_max_speed : null,
+      result: result.Nscrew <= state.bs_max_speed ? 'OK' : 'NOK',
+      remark: 'Wish list',
     },
     {
-      label: 'Motor RMS torque',
-      actual: `${result.T_rms_motor.toFixed(3)} Nm`,
-      capacity: motor ? `${(motor.M0 * 0.7).toFixed(3)} Nm` : 'Select motor',
-      ok: motor ? result.checks.rms : true,
-      remark: motor ? '' : 'Choose a motor',
+      section: '',
+      param: 'Ball screw max torque',
+      capacity: String(state.bs_max_torque.toFixed(2)),
+      actual: result.T_peak_bs.toFixed(2),
+      util: state.bs_max_torque > 0 ? result.T_peak_bs / state.bs_max_torque : null,
+      result: result.T_peak_bs <= state.bs_max_torque ? 'OK' : 'NOK',
+      remark: 'Wish list',
     },
+    // ── Accuracy ──
     {
-      label: 'Inertia ratio',
-      actual: motor ? (result.inertia_ratio !== null ? result.inertia_ratio.toFixed(2) : '—') : 'Select motor',
-      capacity: '10',
-      ok: motor ? result.checks.inertia : true,
-      remark: motor ? '' : 'Choose a motor',
+      section: '',
+      param: 'Movement accuracy of the system, (+/-) micron',
+      capacity: sysAccuracy.toFixed(2),
+      actual: String(state.project_accuracy),
+      util: state.project_accuracy > 0 ? sysAccuracy / state.project_accuracy : null,
+      result: sysAccuracy <= state.project_accuracy ? 'OK' : 'NOK',
+      remark: '',
     },
   ];
 
   tbody.innerHTML = rows.map(row => {
-    const status = row.ok ? 'OK' : 'FAIL';
-    const cls = row.ok ? 'badge-ok' : 'badge-fail';
+    const utilStr    = fmtUtil(row.util);
+    const resStr     = fmtResult(row.util, row.result);
+    const cls        = resultClass(resStr);
+    const sectionHdr = row.section
+      ? `<span style="display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--accent);margin-bottom:2px;">${row.section}</span>`
+      : '';
     return `
       <tr>
-        <td>${row.label}</td>
-        <td class="mono">${row.actual}</td>
+        <td>${sectionHdr}${row.param}</td>
         <td class="mono">${row.capacity}</td>
-        <td><span class="badge ${cls}">${status}</span></td>
-        <td>${row.remark}</td>
+        <td class="mono">${row.actual}</td>
+        <td class="mono">${utilStr}</td>
+        <td><span class="badge ${cls}">${resStr}</span></td>
       </tr>`;
   }).join('');
 }
@@ -457,8 +582,8 @@ function renderGearboxSuggestion(result) {
   const rows = options.map(ratio => {
     const motorTorque = result.T_peak_bs / (ratio * state.gb_efficiency) + state.gb_no_load_torque;
     const motorSpeed = result.Nscrew * state.pk_ratio * ratio;
-    const speedOk = selectedMotor ? motorSpeed <= selectedMotor.Nmax : true;
-    const torqueOk = selectedMotor ? motorTorque <= selectedMotor.Tmax : true;
+    const speedOk = selectedMotor ? motorSpeed <= selectedMotor.Nn : true;
+    const torqueOk = selectedMotor ? motorTorque <= selectedMotor.Mn : true;
     const score = motorTorque * 0.6 + motorSpeed * 0.4 + ((selectedMotor && (!speedOk || !torqueOk)) ? 2000 : 0);
     return {
       ratio,
@@ -470,13 +595,19 @@ function renderGearboxSuggestion(result) {
     };
   });
 
-  const viable = rows.filter(r => r.speedOk && r.torqueOk);
-  const best = viable.length
-    ? viable.reduce((b, c) => c.score < b.score ? c : b, viable[0])
-    : rows.reduce((b, c) => c.score < b.score ? c : b, rows[0]);
+  // Only keep viable ratios, sorted by lowest ratio first
+  const viableRows = rows.filter(r => r.speedOk && r.torqueOk)
+    .sort((a, b) => a.ratio - b.ratio);
 
-  const direct = rows.find(r => r.ratio === 1);
-  const directTorque = direct ? direct.motorTorque : best.motorTorque;
+  if (viableRows.length === 0) {
+    suggestion.innerHTML = 'No viable gearbox ratio found for the selected motor and load.';
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:12px;color:var(--muted)">No viable gearbox ratio — select a motor first or adjust parameters.</td></tr>`;
+    return;
+  }
+
+  const best = viableRows[0];
+  const direct = viableRows.find(r => r.ratio === 1);
+  const directTorque = direct ? direct.motorTorque : viableRows[viableRows.length - 1].motorTorque;
   const saving = best.ratio > 1
     ? Math.round((1 - best.motorTorque / directTorque) * 100)
     : 0;
@@ -492,11 +623,9 @@ function renderGearboxSuggestion(result) {
 
   const activeRatio = state.gb_ratio;
 
-  tbody.innerHTML = rows.map(row => {
+  tbody.innerHTML = viableRows.map((row, i) => {
     const isActive = row.ratio === activeRatio;
-    const isBest = row.ratio === best.ratio;
-    const isViable = row.speedOk && row.torqueOk;
-    const badge = isViable ? 'badge-ok' : 'badge-fail';
+    const isBest   = i === 0;
     const rowSaving = row.ratio > 1 && directTorque > 0
       ? Math.round((1 - row.motorTorque / directTorque) * 100)
       : 0;
@@ -511,7 +640,7 @@ function renderGearboxSuggestion(result) {
         <td class="mono">${row.motorTorque.toFixed(2)} Nm</td>
         <td class="mono">${Math.round(row.motorSpeed)} rpm</td>
         <td>${savingTxt}</td>
-        <td><span class="badge ${badge}">${isViable ? 'Viable' : 'Not viable'}</span></td>
+        <td><span class="badge badge-ok">Viable</span></td>
       </tr>`;
   }).join('');
 
@@ -538,31 +667,25 @@ function renderGearboxSuggestion(result) {
 }
 
 function suggestBestMotor(result) {
+  const needsBrakeSuggest = state.steps.some(s => Number(s.tilt_deg) !== 0);
   const scored = MOTOR_DB.map((motor, index) => {
-    const J_rotor = motor.J * 1e-4;
-    const speedOk = result.Nmotor <= motor.Nmax;
-    const peakOk = result.T_peak_motor <= motor.Tmax;
-    const rmsOk = result.T_rms_motor <= motor.M0 * 0.7;
-    const inertiaOk = (result.I_motor + J_rotor) / J_rotor <= 10;
-    const speedRatio = result.Nmotor / motor.Nmax;
-    const peakRatio = result.T_peak_motor / motor.Tmax;
-    const rmsRatio = result.T_rms_motor / (motor.M0 * 0.7);
-    const inertiaRatio = (result.I_motor + J_rotor) / J_rotor / 10;
-    const penalty =
-      (speedOk ? 0 : speedRatio - 1) * 1000 +
-      (peakOk ? 0 : peakRatio - 1) * 1200 +
-      (rmsOk ? 0 : rmsRatio - 1) * 1400 +
-      (inertiaOk ? 0 : inertiaRatio - 1) * 1100;
-    const score = penalty + motor.M0 * 10 + speedRatio * 50 + peakRatio * 70;
-    return { motor, index, speedOk, peakOk, rmsOk, inertiaOk, penalty, score, viable: penalty === 0 };
+    const J_rotor      = motor.Jmot * 1e-4;
+    const speedUtil    = result.Nmotor / motor.Nn;
+    const torqueUtil   = result.T_peak_motor / motor.Mn;
+    const inertiaUtil  = (result.I_motor + J_rotor) / J_rotor / state.sm_permitted_inertia_ratio;
+    const speedOk    = speedUtil <= 1;
+    const torqueOk   = torqueUtil <= 1;
+    const inertiaOk  = inertiaUtil <= 1;
+    const brakeOk    = !needsBrakeSuggest || motor.brake;
+    const viable     = speedOk && torqueOk && inertiaOk && brakeOk;
+    // Primary: lowest kW (smallest motor). Secondary: lowest total utilization.
+    const score = motor.kW * 1000 + (torqueUtil + speedUtil + inertiaUtil);
+    return { motor, index, speedOk, torqueOk, inertiaOk, brakeOk, viable, score };
   });
 
-  scored.sort((a, b) => {
-    if (a.viable !== b.viable) return a.viable ? -1 : 1;
-    if (a.penalty !== b.penalty) return a.penalty - b.penalty;
-    return a.score - b.score;
-  });
-  return scored[0] || null;
+  // PASS motors sorted: smallest watt first, then best utilization
+  const pass = scored.filter(m => m.viable).sort((a, b) => a.score - b.score);
+  return pass[0] || scored.sort((a, b) => a.score - b.score)[0] || null;
 }
 
 function renderBestMotorSuggestion(result) {
@@ -576,9 +699,9 @@ function renderBestMotorSuggestion(result) {
   }
 
   if (best.viable) {
-    container.innerHTML = `Recommended motor: <strong>${best.motor.pn}</strong> (${best.motor.series}) — ${best.motor.M0.toFixed(2)} Nm rated, ${best.motor.Tmax.toFixed(2)} Nm peak, ${best.motor.Nmax} rpm.`;
+    container.innerHTML = `Recommended motor: <strong>${best.motor.pn}</strong> (${best.motor.series}) — ${best.motor.Mn.toFixed(2)} Nm rated (Mn), ${best.motor.Mmax.toFixed(2)} Nm peak (Mmax), ${best.motor.Nn} rpm (Nn)${best.motor.brake ? ', <strong>Brake</strong>' : ''}.`;
   } else {
-    container.innerHTML = `Closest motor: <strong>${best.motor.pn}</strong> — ${best.motor.M0.toFixed(2)} Nm, ${best.motor.Tmax.toFixed(2)} Nm, ${best.motor.Nmax} rpm (may still exceed one or more limits).`;
+    container.innerHTML = `Closest motor: <strong>${best.motor.pn}</strong> — ${best.motor.Mn.toFixed(2)} Nm rated, ${best.motor.Nn} rpm (may still exceed one or more limits).`;
   }
 }
 
@@ -740,54 +863,140 @@ function parseExcelStepRows(rows) {
 
 function parseExcelValues(rows) {
   let updated = parseExcelStepRows(rows);
+
+  // calc sheet: col A=index0 (section heading), col B=index1 (label), col C=index2 (value)
+  // Try col B as label, col C as value first; fall back to col A / col B for other sheets
   const mapping = new Map([
-    ['no of shifts per day', 'project_shifts'],
-    ['working hours per shift', 'project_hours_shift'],
-    ['working days per week', 'project_days_week'],
-    ['total cycle time of machine', 'project_total_cycle'],
-    ['total operating time per cycle', 'project_operating_time'],
-    ['expected service life of machine', 'project_service_life'],
-    ['movement accuracy required', 'project_accuracy'],
-    ['movement stroke required', 'stroke'],
-    ['cycle time available for single movement', 'move_time'],
-    ['external force on the moving mass', 'external_force'],
-    ['moving mass', 'load_mass'],
-    ['guide moving mass', 'guide_mass'],
-    ['tilt angle of the setup', 'tilt_deg'],
-    ['acceleration time %', '_ignore'],
-    ['ball screw pitch', 'bs_pitch'],
-    ['ball screw efficiency', 'bs_efficiency'],
-    ['ball screw friction torque', 'bs_friction_torque'],
-    ['ball screw moment of inertia', 'bs_inertia'],
-    ['parallel kit ratio', 'pk_ratio'],
-    ['pk ratio', 'pk_ratio'],
-    ['pk no load', 'pk_no_load_torque'],
-    ['pk inertia', 'pk_inertia'],
-    ['gear ratio', 'gb_ratio'],
-    ['gb ratio', 'gb_ratio'],
-    ['gearbox efficiency', 'gb_efficiency'],
-    ['gb efficiency', 'gb_efficiency'],
-    ['gear no load running torque', 'gb_no_load_torque'],
-    ['gb no load', 'gb_no_load_torque'],
-    ['gear inertia', 'gb_inertia'],
-    ['gb inertia', 'gb_inertia'],
-    ['application', 'label'],
-    ['operation', 'label'],
-    ['op', 'label'],
-    ['displacement force required', 'guide_force'],
+    // Application requirement (calc B4-B18)
+    ['no of shifts per day',                    'project_shifts'],
+    ['working hours per shift',                 'project_hours_shift'],
+    ['working days per week',                   'project_days_week'],
+    ['total cycle time of machine',             'project_total_cycle'],
+    ['total operating time per cycle',          'project_operating_time'],
+    ['expected service life of machine',        'project_service_life'],
+    ['movement accuracy required',              'project_accuracy'],
+    ['movement stroke required',                'stroke'],
+    ['cycle time available for single movement','move_time'],
+    ['external force on the moving mass',       'external_force'],
+    ['moving mass',                             'load_mass'],
+    ['tilt angle of the setup',                 'tilt_deg'],
+    ['acceleration %',                          'acc_pct'],
+    ['acceleration time %',                     'acc_pct'],
+    ['accel decel time %',                      'acc_pct'],
+    ['safety factor %',                         'safety_factor'],
+    ['safety factor',                           'safety_factor'],
+    // Ball screw (calc B22-B23, B69-B73)
+    ['ball screw pitch',                        'bs_pitch'],
+    ['ball screw efficiency',                   'bs_efficiency_pct'],  // % → convert
+    ['ball screw friction torque',              'bs_friction_torque'],
+    ['ball screw friction torque @ application','bs_friction_torque'],
+    ['ball screw moment of inertia',            'bs_inertia'],
+    ['ball screw - moment of inertia',          'bs_inertia'],
+    ['ball screw - repetition accuracy',        'bs_repetition_accuracy'],
+    ['ball screw repetition accuracy',          'bs_repetition_accuracy'],
+    ['ball screw permitted driving torque max', 'bs_max_torque'],
+    ['ball screw - permitted driving torque max','bs_max_torque'],
+    ['ball screw - permitted velocity',         'bs_max_speed_mms'], // mm/sec, convert later
+    ['ball screw - permitted driving torque',   'bs_max_torque'],
+    // Parallel kit (calc B26-B30)
+    ['gear ratio',                              'pk_ratio'],
+    ['no load driving torque',                  'pk_no_load_torque'],
+    ['no. load driving torque',                 'pk_no_load_torque'],
+    ['mass momment of inertia',                 'pk_inertia_mm2'],  // kg·mm² → convert
+    ['mass moment of inertia',                  'pk_inertia_mm2'],  // kg·mm² → convert
+    ['max transfereable torque',                'pk_max_torque'],
+    ['max. transferable torque',                'pk_max_torque'],
+    ['max transferable torque',                 'pk_max_torque'],
+    ['max rotational speed',                    'pk_max_speed'],
+    ['max. rotational speed',                   'pk_max_speed'],
+    // Gearbox (calc B42-B47, B76-B82)
+    ['selected gear ratio',                     'gb_ratio'],
+    ['gb- efficiency',                          'gb_efficiency_pct'],  // % → convert
+    ['gb - efficiency',                         'gb_efficiency_pct'],
+    ['gearbox efficiency',                      'gb_efficiency_pct'],
+    ['gb-backlash',                             'gb_backlash'],
+    ['gb - backlash',                           'gb_backlash'],
+    ['gb- no load running torque',              'gb_no_load_torque'],
+    ['gb - no load running torque',             'gb_no_load_torque'],
+    ['gearbox  - inertia',                      'gb_inertia'],
+    ['gearbox - inertia',                       'gb_inertia'],
+    ['gb - inertia',                            'gb_inertia'],
+    ['gb - rated input speed',                  'gb_rated_input_speed'],
+    ['gb - rated output torque',                'gb_rated_output_torque'],
+    // Servo motor (calc B57-B59)
+    ['sm - permitted inertia ratio',            'sm_permitted_inertia_ratio'],
+    ['sm - encoder reolution',                  'sm_encoder_ppr'],
+    ['sm - encoder resolution',                 'sm_encoder_ppr'],
+    // Guide (calc B33-B34)
+    ['displacement force required',             'guide_force'],
+    ['moving mass',                             'guide_mass'],
   ]);
+
+  function resolveRow(row) {
+    // Try layout A: col B = label, col C = value (calc sheet)
+    // Try layout B: col A = label, col B = value (Servo Inputs sheet)
+    // Pick whichever yields a mapping match
+    const tryMatch = (lbl) => {
+      const label = normalizeLabel(lbl);
+      if (!label) return null;
+      let key = mapping.get(label);
+      if (!key) {
+        for (const [k, v] of mapping) {
+          if (label.includes(k) || k.includes(label)) { key = v; break; }
+        }
+      }
+      return key || null;
+    };
+
+    // Layout A: col1 = label, col2 = value
+    const keyA = tryMatch(row[1]);
+    if (keyA) return { key: keyA, value: row[2] };
+
+    // Layout B: col0 = label, col1 = value
+    const keyB = tryMatch(row[0]);
+    if (keyB) return { key: keyB, value: row[1] };
+
+    return null;
+  }
 
   for (const row of rows) {
     if (!row || row.length < 2) continue;
-    const label = normalizeLabel(row[0]);
-    const value = row[1];
-    const key = mapping.get(label);
-    if (!key) continue;
-    const parsed = Number(String(value).replace(/[^0-9.+-]/g, ''));
-    if (!Number.isNaN(parsed)) {
-      state[key] = parsed;
-      updated += 1;
+
+    const match = resolveRow(row);
+    if (!match || match.key === '_ignore') continue;
+
+    let { key, value } = match;
+
+    const parsed = Number(String(value).replace(/[^0-9.eE+-]/g, ''));
+    if (isNaN(parsed)) continue;
+
+    // Unit conversions and special keys
+    if (key === 'bs_max_speed_mms') {
+      if (state.bs_pitch > 0) { state.bs_max_speed = (parsed / state.bs_pitch) * 60; updated++; }
+      continue;
     }
+    if (key === 'bs_efficiency_pct') {
+      // Template stores as % (e.g. 98), state needs decimal (0.98)
+      state.bs_efficiency = parsed > 1 ? parsed / 100 : parsed; updated++; continue;
+    }
+    if (key === 'gb_efficiency_pct') {
+      state.gb_efficiency = parsed > 1 ? parsed / 100 : parsed; updated++; continue;
+    }
+    if (key === 'pk_inertia_mm2') {
+      // Template stores in kg·mm², state needs kg·m²
+      state.pk_inertia = parsed * 1e-6; updated++; continue;
+    }
+    if (key === 'acc_pct') {
+      // Calc sheet stores as decimal fraction (0.25), state needs percentage (25)
+      state.acc_pct = parsed <= 1 ? parsed * 100 : parsed; updated++; continue;
+    }
+    if (key === 'safety_factor') {
+      // Calc sheet stores as decimal fraction (0.20), state needs percentage (20)
+      state.safety_factor = parsed <= 1 ? parsed * 100 : parsed; updated++; continue;
+    }
+
+    state[key] = parsed;
+    updated++;
   }
 
   return updated;
@@ -804,14 +1013,16 @@ function loadExcelFile(file) {
     try {
       const data = new Uint8Array(event.target.result);
       const workbook = XLSX.read(data, { type: 'array' });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      // Read 'calc' sheet by name (labels in col B = index 1, values in col C = index 2)
+      const sheetName = workbook.SheetNames.find(n => n.toLowerCase() === 'calc') || workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
       const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false });
       const updated = parseExcelValues(rows);
       if (updated > 0) {
         saveState();
         renderInputs();
         render();
-        setExcelStatus(`Imported ${updated} value(s) from Excel.`);
+        setExcelStatus(`Imported ${updated} value(s) from Excel (sheet: ${sheetName}).`);
       } else {
         setExcelStatus('No matching labels were found in the Excel file.', true);
       }
@@ -987,22 +1198,43 @@ function injectProjectContextBanner() {
     if (selectedMotorIdx >= 0 && selectedMotorIdx < MOTOR_DB.length && lastResult) {
       const motor = MOTOR_DB[selectedMotorIdx];
       motorPN = motor.pn;
-      const J_rotor = motor.J * 1e-4;
-      const speedOk  = lastResult.Nmotor <= motor.Nmax;
-      const peakOk   = lastResult.T_peak_motor <= motor.Tmax;
-      const rmsOk    = lastResult.T_rms_motor <= motor.M0 * 0.7;
-      const inertiaOk = (lastResult.I_motor + J_rotor) / J_rotor <= 10;
-      status = (speedOk && peakOk && rmsOk && inertiaOk) ? 'PASS' : 'FAIL';
+      const J_rotor = motor.Jmot * 1e-4;
+      const speedOk  = lastResult.Nmotor <= motor.Nn;
+      const torqueOk = lastResult.T_peak_motor <= motor.Mn;
+      const inertiaOk = (lastResult.I_motor + J_rotor) / J_rotor <= state.sm_permitted_inertia_ratio;
+      const needsBrakeCtx = state.steps.some(s => Number(s.tilt_deg) !== 0);
+      const brakeOk = !needsBrakeCtx || motor.brake;
+      status = (speedOk && torqueOk && inertiaOk && brakeOk) ? 'PASS' : 'FAIL';
     }
 
     // Persist back to project store
     const servoState = JSON.parse(localStorage.getItem('titanServoState') || 'null');
     if (window.Projects) {
+      // Save key result metrics so the project export can display them without re-running the calculator
+      let metrics = null;
+      if (selectedMotorIdx >= 0 && selectedMotorIdx < MOTOR_DB.length && lastResult) {
+        const m = MOTOR_DB[selectedMotorIdx];
+        const permRatio = (servoState && servoState.sm_permitted_inertia_ratio) || 7;
+        metrics = {
+          Nmotor: Math.round(lastResult.Nmotor),
+          T_peak_motor: +lastResult.T_peak_motor.toFixed(3),
+          inertia_ratio: lastResult.inertia_ratio !== null ? +lastResult.inertia_ratio.toFixed(3) : null,
+          speedUtil:    Math.round(lastResult.Nmotor / m.Nn * 100),
+          torqueUtil:   Math.round(lastResult.T_peak_motor / m.Mn * 100),
+          inertiaUtil:  lastResult.inertia_ratio !== null
+            ? Math.round(lastResult.inertia_ratio / permRatio * 100)
+            : null,
+          motorKW: m.kW,
+          motorMn: m.Mn,
+          motorNn: m.Nn,
+        };
+      }
       Projects.updateServo(ctx.projectId, ctx.servoId, {
         state: servoState,
         motorIdx: selectedMotorIdx,
         motor: motorPN,
         status,
+        metrics,
       });
       Projects.clearContext();
     }
@@ -1013,6 +1245,266 @@ function injectProjectContextBanner() {
   banner.appendChild(label);
   banner.appendChild(saveBtn);
   document.body.insertBefore(banner, document.body.firstChild);
+}
+
+/* ─────────────────────────────────────────────
+   MOTION PROFILE CHART
+   Trapezoidal velocity (mm/s) across all steps.
+   acc_pct is now a shared project-level value.
+───────────────────────────────────────────── */
+function renderMotionProfileChart() {
+  const canvas = document.getElementById('motion-profile-canvas');
+  const legend = document.getElementById('motion-profile-legend');
+  if (!canvas) return;
+
+  const dpr  = window.devicePixelRatio || 1;
+  const W    = canvas.parentElement ? canvas.parentElement.clientWidth - 48 : 860;
+  const H    = 260;
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+
+  const PAD = { top: 28, right: 24, bottom: 52, left: 70 };
+  const pw  = W - PAD.left - PAD.right;
+  const ph  = H - PAD.top  - PAD.bottom;
+
+  // Build segments ─────────────────────────────
+  const COLORS = ['#1d4ed8','#16a34a','#b45309','#9333ea','#dc2626','#0891b2','#c2410c','#15803d'];
+  const segs = [];
+  let totalT = 0, maxV = 0;
+
+  state.steps.forEach((step, i) => {
+    const avail   = Math.max(step.move_time - state.dwell_time, 0.01);
+    const t_acc   = Math.min(avail / 2, avail * (state.acc_pct / 100));
+    const t_dec   = t_acc;
+    const t_const = Math.max(0, avail - t_acc - t_dec);
+    const Vmax    = avail > t_acc ? (step.stroke / avail) : 0;   // mm/s simplified
+    maxV = Math.max(maxV, Vmax);
+    segs.push({
+      label: step.label || `Step ${i + 1}`,
+      t_acc, t_const, t_dec,
+      dwell: state.dwell_time,
+      Vmax,
+      color: COLORS[i % COLORS.length],
+    });
+    totalT += t_acc + t_const + t_dec + state.dwell_time;
+  });
+
+  if (maxV === 0) maxV = 1;
+  const tX = t => PAD.left + (t / totalT) * pw;
+  const vY = v => PAD.top  + ph - (v / maxV) * ph;
+
+  // Grid ────────────────────────────────────────
+  ctx.strokeStyle = '#e5e7eb';
+  ctx.lineWidth   = 1;
+  ctx.fillStyle   = '#6b7280';
+  ctx.font        = '11px Inter,system-ui,sans-serif';
+  ctx.textAlign   = 'right';
+  const vTicks = 5;
+  for (let k = 0; k <= vTicks; k++) {
+    const y = PAD.top + ph - (k / vTicks) * ph;
+    ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + pw, y); ctx.stroke();
+    ctx.fillText(((k / vTicks) * maxV).toFixed(0), PAD.left - 8, y + 4);
+  }
+
+  // Y-axis label
+  ctx.save();
+  ctx.translate(14, PAD.top + ph / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = 'center';
+  ctx.fillText('Velocity (mm/s)', 0, 0);
+  ctx.restore();
+
+  // Phase labels key
+  const phaseY = PAD.top - 10;
+  [['#1d4ed8','Accel'], ['#16a34a','Constant'], ['#b45309','Decel'], ['#9ca3af','Dwell']].forEach(([c, lbl], i) => {
+    ctx.fillStyle = c; ctx.fillRect(PAD.left + i * 100, phaseY, 12, 8);
+    ctx.fillStyle = '#374151'; ctx.textAlign = 'left'; ctx.font = '10px Inter,system-ui,sans-serif';
+    ctx.fillText(lbl, PAD.left + i * 100 + 15, phaseY + 7);
+  });
+
+  // Draw each step ──────────────────────────────
+  let cursor = 0;
+  segs.forEach(seg => {
+    const phases = [
+      { t: seg.t_acc,   v0: 0,        v1: seg.Vmax,  shade: '#3b82f620' },
+      { t: seg.t_const, v0: seg.Vmax, v1: seg.Vmax,  shade: '#22c55e20' },
+      { t: seg.t_dec,   v0: seg.Vmax, v1: 0,         shade: '#f9731620' },
+      { t: seg.dwell,   v0: 0,        v1: 0,         shade: '#e5e7eb40' },
+    ];
+
+    let t = cursor;
+    phases.forEach(ph => {
+      if (ph.t <= 0) return;
+      ctx.beginPath();
+      ctx.moveTo(tX(t),        vY(ph.v0));
+      ctx.lineTo(tX(t + ph.t), vY(ph.v1));
+      ctx.lineTo(tX(t + ph.t), vY(0));
+      ctx.lineTo(tX(t),        vY(0));
+      ctx.closePath();
+      ctx.fillStyle = ph.shade;
+      ctx.fill();
+      t += ph.t;
+    });
+
+    // Outline
+    ctx.beginPath();
+    ctx.moveTo(tX(cursor), vY(0));
+    ctx.lineTo(tX(cursor + seg.t_acc), vY(seg.Vmax));
+    ctx.lineTo(tX(cursor + seg.t_acc + seg.t_const), vY(seg.Vmax));
+    ctx.lineTo(tX(cursor + seg.t_acc + seg.t_const + seg.t_dec), vY(0));
+    ctx.lineTo(tX(cursor + seg.t_acc + seg.t_const + seg.t_dec + seg.dwell), vY(0));
+    ctx.strokeStyle = seg.color;
+    ctx.lineWidth   = 2.5;
+    ctx.stroke();
+
+    // Step label at peak
+    const midT = cursor + seg.t_acc + seg.t_const / 2;
+    if (seg.Vmax > 0) {
+      ctx.fillStyle = seg.color;
+      ctx.font      = 'bold 11px Inter,system-ui,sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(seg.label, tX(midT), vY(seg.Vmax) - 8);
+    }
+
+    cursor += seg.t_acc + seg.t_const + seg.t_dec + seg.dwell;
+  });
+
+  // X-axis ticks ────────────────────────────────
+  ctx.strokeStyle = '#d1d5db'; ctx.lineWidth = 1;
+  const xTicks = Math.min(12, Math.ceil(totalT / 0.25));
+  ctx.fillStyle = '#6b7280'; ctx.font = '10px Inter,system-ui,sans-serif'; ctx.textAlign = 'center';
+  for (let k = 0; k <= xTicks; k++) {
+    const t = (k / xTicks) * totalT;
+    const x = tX(t);
+    ctx.beginPath(); ctx.moveTo(x, PAD.top + ph); ctx.lineTo(x, PAD.top + ph + 5); ctx.stroke();
+    ctx.fillText(t.toFixed(2) + 's', x, PAD.top + ph + 18);
+  }
+  ctx.fillStyle = '#374151'; ctx.textAlign = 'center';
+  ctx.fillText('Time (s)', PAD.left + pw / 2, H - 4);
+
+  // Legend ──────────────────────────────────────
+  if (legend) {
+    const totalCycle = state.steps.reduce((s, st) => s + st.move_time, 0);
+    legend.innerHTML =
+      segs.map(seg => `
+        <span style="display:flex;align-items:center;gap:5px;">
+          <span style="width:12px;height:12px;border-radius:3px;background:${seg.color};display:inline-block;flex-shrink:0;"></span>
+          <span><strong>${seg.label}</strong> — acc ${seg.t_acc.toFixed(2)}s · const ${seg.t_const.toFixed(2)}s · dec ${seg.t_dec.toFixed(2)}s · dwell ${seg.dwell.toFixed(2)}s</span>
+        </span>`).join('') +
+      `<span style="margin-left:auto;font-weight:700;color:var(--text);white-space:nowrap;">Total cycle: ${totalCycle.toFixed(2)} s</span>`;
+  }
+}
+
+/* ─────────────────────────────────────────────
+   REPORT — Download only (no UI display)
+───────────────────────────────────────────── */
+function downloadReport(result) {
+  if (!window.XLSX) { alert('XLSX library not loaded.'); return; }
+
+  const motor    = result.selectedMotor;
+  const sysAcc   = calculateSystemAccuracy();
+  const dateStr  = new Date().toLocaleDateString(undefined, { day:'numeric', month:'long', year:'numeric' });
+
+  const aoa = [];
+
+  // Header
+  aoa.push(['ClusterVise — Servo Sizing Report']);
+  aoa.push([dateStr]);
+  aoa.push([]);
+
+  // At Ball screw shaft
+  aoa.push(['At Ball screw shaft']);
+  aoa.push(['Torque Required at ball screw shaft', result.T_peak_bs.toFixed(2), 'Nm']);
+  aoa.push(['Speed Required at ball screw shaft',  Math.round(result.Nscrew),    'rpm']);
+  aoa.push(['Linear Speed of the ball screw shaft', result.Vmax_mm_s.toFixed(1), 'mm/sec']);
+  aoa.push([]);
+
+  // At Motor shaft
+  aoa.push(['At Motor shaft']);
+  aoa.push(['Torque Required at Motor shaft', result.T_peak_motor.toFixed(2), 'Nm']);
+  aoa.push(['Speed Required at Motor shaft',  Math.round(result.Nmotor),       'rpm']);
+  aoa.push([]);
+
+  // Selected Motor
+  aoa.push(['Selected Motor']);
+  if (motor) {
+    aoa.push(['Part number',           motor.pn]);
+    aoa.push(['Series',                motor.series]);
+    aoa.push(['Rated torque Mn',       motor.Mn,   'Nm']);
+    aoa.push(['Peak torque Mmax',      motor.Mmax, 'Nm']);
+    aoa.push(['Rated speed Nn',        motor.Nn,   'rpm']);
+    aoa.push(['Rotor inertia Jmot',    motor.Jmot, 'kg·cm²']);
+    aoa.push(['Holding brake',         motor.brake ? 'Yes' : 'No']);
+  } else {
+    aoa.push(['No motor selected']);
+  }
+  aoa.push([]);
+
+  // Verification Checklist (blue rows only — exact Excel names)
+  aoa.push(['Verification Checklist']);
+  aoa.push(['Parameters', 'Capacity / Selected', 'Actual / Required', 'Utilization', 'Result', 'Remarks']);
+
+  const chkRows = [
+    ['Motor Rated Speed Nn, rpm',
+      motor ? motor.Nn : '',
+      Math.round(result.Nmotor),
+      motor ? (result.Nmotor / motor.Nn * 100).toFixed(0) + '%' : '',
+      motor ? (result.Nmotor <= motor.Nn ? 'OK' : 'NOK') : ''],
+    ['Motor Rated Torque Mn, Nm',
+      motor ? motor.Mn : '',
+      result.T_peak_motor.toFixed(2),
+      motor ? (result.T_peak_motor / motor.Mn * 100).toFixed(0) + '%' : '',
+      motor ? (result.T_peak_motor <= motor.Mn ? 'OK' : 'Check Duty cycle') : ''],
+    ['Motor Inertia Ratio',
+      state.sm_permitted_inertia_ratio,
+      result.inertia_ratio !== null ? result.inertia_ratio.toFixed(2) : '',
+      result.inertia_ratio !== null ? (result.inertia_ratio / state.sm_permitted_inertia_ratio * 100).toFixed(0) + '%' : '',
+      result.inertia_ratio !== null ? (result.inertia_ratio <= state.sm_permitted_inertia_ratio ? 'OK' : 'NOK') : ''],
+    ['GearBox Input speed, rpm',
+      state.gb_rated_input_speed || '',
+      Math.round(result.Nmotor),
+      state.gb_rated_input_speed > 0 ? (result.Nmotor / state.gb_rated_input_speed * 100).toFixed(0) + '%' : '#DIV/0!',
+      state.gb_rated_input_speed > 0 ? (result.Nmotor <= state.gb_rated_input_speed ? 'OK' : 'NOK') : '#DIV/0!'],
+    ['GearBox Output Torque, Nm',
+      state.gb_rated_output_torque || '',
+      result.T_peak_bs.toFixed(2),
+      state.gb_rated_output_torque > 0 ? (result.T_peak_bs / state.gb_rated_output_torque * 100).toFixed(0) + '%' : '#DIV/0!',
+      state.gb_rated_output_torque > 0 ? (result.T_peak_bs <= state.gb_rated_output_torque ? 'OK' : 'NOK') : '#DIV/0!'],
+    ['Ball screw max speed, rpm',
+      state.bs_max_speed,
+      Math.round(result.Nscrew),
+      (result.Nscrew / state.bs_max_speed * 100).toFixed(0) + '%',
+      result.Nscrew <= state.bs_max_speed ? 'OK' : 'NOK',
+      'Wish list'],
+    ['Ball screw max torque',
+      state.bs_max_torque,
+      result.T_peak_bs.toFixed(2),
+      (result.T_peak_bs / state.bs_max_torque * 100).toFixed(0) + '%',
+      result.T_peak_bs <= state.bs_max_torque ? 'OK' : 'NOK',
+      'Wish list'],
+    ['Movement accuracy of the system, (+/-) micron',
+      sysAcc.toFixed(2),
+      state.project_accuracy,
+      (sysAcc / state.project_accuracy * 100).toFixed(0) + '%',
+      sysAcc <= state.project_accuracy ? 'OK' : 'NOK'],
+  ];
+  chkRows.forEach(r => aoa.push(r));
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = { SheetNames: ['Report'], Sheets: { Report: ws } };
+  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const url = URL.createObjectURL(new Blob([buf], { type: 'application/octet-stream' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'ClusterVise_Servo_Report.xlsx';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 window.addEventListener('DOMContentLoaded', init);

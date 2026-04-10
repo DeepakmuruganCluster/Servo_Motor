@@ -25,6 +25,11 @@
     return new Date().toISOString();
   }
 
+  let _seq = 0;
+  function uid(prefix) {
+    return `${prefix}-${Date.now()}-${++_seq}`;
+  }
+
   const Projects = {
     /** Return all projects sorted by last updated, newest first. */
     getAll() {
@@ -40,7 +45,7 @@
     /** Create a new project. Returns the new project id. */
     create({ name, customer = '', machine = '' }) {
       const store = getStore();
-      const id = 'proj-' + Date.now();
+      const id = uid('proj');
       store.projects[id] = {
         id,
         name,
@@ -78,7 +83,7 @@
       const store = getStore();
       const proj = store.projects[projectId];
       if (!proj) return null;
-      const id = 'servo-' + Date.now();
+      const id = uid('servo');
       proj.servos.push({
         id,
         name,
@@ -94,7 +99,7 @@
     },
 
     /** Update a servo's persisted state and status after an edit session. */
-    updateServo(projectId, servoId, { state, motorIdx, motor, status } = {}) {
+    updateServo(projectId, servoId, { state, motorIdx, motor, status, metrics } = {}) {
       const store = getStore();
       const proj = store.projects[projectId];
       if (!proj) return;
@@ -104,6 +109,7 @@
       if (motorIdx !== undefined) servo.motorIdx = motorIdx;
       if (motor !== undefined) servo.motor = motor;
       if (status !== undefined) servo.status = status;
+      if (metrics !== undefined) servo.metrics = metrics;
       servo.lastUpdated = now();
       proj.lastUpdated = now();
       saveStore(store);

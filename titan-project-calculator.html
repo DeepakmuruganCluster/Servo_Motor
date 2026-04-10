@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ClusterVise — Application Calculator</title>
   <link rel="stylesheet" href="servo-app.css" />
+  <script src="auth.js"></script>
   <style>
     @media print {
       header, .nav-links, #add-step-button, #download-template-button,
@@ -143,6 +144,26 @@
           The physical hardware connecting this motor to the load.
         </p>
 
+        <!-- Parallel Kit / Gearbox presence -->
+        <div class="field-grid" style="margin-bottom:20px;">
+          <div class="field-row">
+            <label>Parallel Kit
+              <select data-key="has_parallel_kit" style="padding:9px 12px;font-size:13px;">
+                <option value="1">Yes</option>
+                <option value="0">No</option>
+              </select>
+            </label>
+          </div>
+          <div class="field-row">
+            <label>Gearbox (GB)
+              <select data-key="has_gearbox" style="padding:9px 12px;font-size:13px;">
+                <option value="1">Yes</option>
+                <option value="0">No</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
         <div class="mech-cols">
           <!-- Ball screw + Guide -->
           <div class="mech-sub">
@@ -270,6 +291,37 @@
             </table>
           </div>
         </div>
+      </section>
+
+      <!-- ═══════════════════════════════════════
+           FULL WIDTH — PRIMARY RESULTS
+           (after Mechanical Configuration)
+      ════════════════════════════════════════════ -->
+      <section class="card" style="grid-column: 1 / -1;">
+        <h2>Primary Results</h2>
+        <div class="section-block">
+          <h3>At Ball screw shaft</h3>
+          <div class="metric-grid">
+            <div class="metric-card"><span>Torque Required at ball screw shaft</span><strong id="out_tpeak_bs">—</strong></div>
+            <div class="metric-card"><span>Speed Required at ball screw shaft</span><strong id="out_nscrew">—</strong></div>
+            <div class="metric-card"><span>Linear Speed of the ball screw shaft</span><strong id="out_vmax">—</strong></div>
+          </div>
+        </div>
+        <div class="section-block">
+          <h3>At Motor shaft</h3>
+          <div class="metric-grid">
+            <div class="metric-card"><span>Torque Required at Motor shaft</span><strong id="out_tpeak_motor">—</strong></div>
+            <div class="metric-card"><span>Speed Required at Motor shaft</span><strong id="out_nmotor">—</strong></div>
+          </div>
+        </div>
+        <!-- Hidden holders so JS renderMetric calls don't break -->
+        <span id="out_amax" style="display:none"></span>
+        <span id="out_tload" style="display:none"></span>
+        <span id="out_faxial" style="display:none"></span>
+        <span id="out_taccel" style="display:none"></span>
+        <span id="out_trms" style="display:none"></span>
+        <span id="out_inertia" style="display:none"></span>
+        <span id="out_inertia_ratio" style="display:none"></span>
       </section>
 
       <!-- ═══════════════════════════════════════
@@ -410,20 +462,21 @@
           <table class="table">
             <thead>
               <tr>
+                <th>#</th>
                 <th>Part number</th>
                 <th>Series</th>
                 <th>kW</th>
-                <th>M₀ (Nm)</th>
-                <th>Tmax (Nm)</th>
-                <th>Nmax (rpm)</th>
-                <th>J (kg·cm²)</th>
-                <th>Status</th>
+                <th>Mn (Nm)</th>
+                <th>Mmax (Nm)</th>
+                <th>Nn (rpm)</th>
+                <th>Jmot (kg·cm²)</th>
+                <th>Brake</th>
+                <th>Utilization (N/T/J)</th>
               </tr>
             </thead>
             <tbody id="motor-table-body"></tbody>
           </table>
         </div>
-        <div class="section-block" id="selected-motor-details"></div>
       </section>
 
       <!-- ═══════════════════════════════════════
@@ -432,17 +485,46 @@
       <section class="card" style="grid-column: 1 / -1;">
         <h2>Verification Checklist</h2>
         <table class="checklist">
-          <thead><tr><th>Criterion</th><th>Actual</th><th>Capacity</th><th>Status</th><th>Notes</th></tr></thead>
+          <thead>
+            <tr>
+              <th>Parameters</th>
+              <th>Capacity / Selected</th>
+              <th>Actual / Required</th>
+              <th>Utilization</th>
+              <th>Result</th>
+            </tr>
+          </thead>
           <tbody id="verification-body"></tbody>
         </table>
       </section>
 
+      <!-- ═══════════════════════════════════════
+           FULL WIDTH — MOTION PROFILE
+      ════════════════════════════════════════════ -->
+      <section class="card" style="grid-column: 1 / -1;">
+        <h2>Motion Profile</h2>
+        <canvas id="motion-profile-canvas" style="width:100%;display:block;"></canvas>
+        <div id="motion-profile-legend" style="display:flex;gap:20px;flex-wrap:wrap;margin-top:14px;font-size:12px;color:var(--muted);align-items:center;"></div>
+      </section>
+
+      <!-- ═══════════════════════════════════════
+           FULL WIDTH — REPORT (download only)
+      ════════════════════════════════════════════ -->
+      <section class="card" style="grid-column: 1 / -1;">
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+          <h2 style="margin:0;">Report</h2>
+          <button id="download-report-btn" type="button" class="button secondary" style="display:flex;align-items:center;gap:6px;">
+            <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download Report
+          </button>
+          <span style="font-size:13px;color:var(--muted);">Downloads an Excel file with primary results and verification checklist.</span>
+        </div>
+      </section>
 
     </div>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="auth.js"></script>
   <script src="projects.js"></script>
   <script src="servo-app.js"></script>
 </body>

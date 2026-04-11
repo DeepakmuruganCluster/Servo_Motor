@@ -177,62 +177,87 @@
 })(window);
 
 /**
- * Confidence score for a servo state object.
- * Formula: (must×0.60 + critical×0.30 + additional×0.10) × 0.9 (Application Selection Method)
- * Returns integer 0–90.
+ * Confidence score based on "Confidence level calc.xlsx".
+ * Formula:
+ * (sum(Must * acquisitionFactor) + sum(Critical * acquisitionFactor) + sum(Additional * acquisitionFactor))
+ * * selectionModelFactor
+ * where category accuracies are Must=60%, Critical=30%, Additional=10%.
+ *
+ * Accepts either a servo object ({ state, motorIdx, metrics, ... })
+ * or a raw state object.
  */
-function calculateConfidence(state) {
-  if (!state) return 0;
+function calculateConfidence(input) {
+  const servo = input && input.state ? input : { state: input || {} };
+  const state = servo.state || {};
+  const steps = Array.isArray(state.steps) && state.steps.length > 0 ? state.steps : [];
+  const s0 = steps[0] || {};
+  const hasPK = Number(state.has_parallel_kit) !== 0;
 
-  const hasPK = state.has_parallel_kit === true || Number(state.has_parallel_kit) === 1;
-  const steps = Array.isArray(state.steps) && state.steps.length > 0 ? state.steps : null;
-  const s0 = steps ? steps[0] : {};
+  const ACCURACY = { must: 0.60, critical: 0.30, additional: 0.10 };
+  const VALUE_FACTOR = { direct: 1.0, derived: 0.5 };
 
-  // 1 if value was explicitly provided (non-zero finite number), 0 otherwise
-  function direct(val) {
+  function hasNumber(val, allowZero = false) {
     const n = Number(val);
-    return (val !== undefined && val !== null && Number.isFinite(n) && n !== 0) ? 1 : 0;
+    if (!Number.isFinite(n)) return false;
+    return allowZero ? true : n !== 0;
   }
 
-  // Must have (60%) — 16 parameters per spec
+  function entry(ok, acquisition = 'direct') {
+    return (ok ? 1 : 0) * (VALUE_FACTOR[acquisition] || 1);
+  }
+
   const must = [
-    steps && direct(s0.stroke)              ? 1 : 0,  // Movement stroke
-    steps && direct(s0.move_time)           ? 1 : 0,  // Cycle time for movement
-    steps                                   ? 1 : 0,  // External force (0 N is valid)
-    steps && direct(s0.load_mass)           ? 1 : 0,  // Moving mass
-    steps                                   ? 1 : 0,  // Tilt angle (0° is valid)
-    direct(state.project_accuracy),                   // Movement accuracy
-    direct(state.bs_pitch),                           // Ball screw pitch
-    0,                                                // Ball screw dia — not collected ⚠
-    hasPK ? direct(state.pk_ratio)          : 1,     // PK gear ratio
-    hasPK ? direct(state.pk_no_load_torque) : 1,     // PK no-load torque
-    hasPK ? direct(state.pk_inertia)        : 1,     // PK inertia
-    hasPK ? direct(state.pk_max_torque)     : 1,     // PK max torque
-    hasPK ? direct(state.pk_max_speed)      : 1,     // PK max speed
-    direct(state.guide_force),                        // Guide displacement force
-    direct(state.guide_mass),                         // Guide moving mass
-    0,                                                // Guide max withstand force — not collected ⚠
+    entry(hasNumber(s0.stroke)),
+    entry(hasNumber(s0.move_time)),
+    entry(hasNumber(s0.external_force, true)),
+    entry(hasNumber(s0.load_mass)),
+    entry(hasNumber(s0.tilt_deg, true)),
+    entry(hasNumber(state.project_accuracy)),
+    entry(hasNumber(state.bs_pitch)),
+    entry(hasNumber(state.bs_dia)),
+    entry(hasPK ? hasNumber(state.pk_ratio) : true),
+    entry(hasPK ? hasNumber(state.pk_no_load_torque) : true),
+    entry(hasPK ? hasNumber(state.pk_inertia) : true),
+    entry(hasPK ? hasNumber(state.pk_max_torque) : true),
+    entry(hasPK ? hasNumber(state.pk_max_speed) : true),
+    entry(hasNumber(state.guide_force)),
+    entry(hasNumber(state.guide_mass)),
+    entry(hasNumber(state.guide_max_force)),
   ];
 
-  // Critical (30%) — 4 parameters
-  const crit = [
-    direct(state.project_operating_time),  // Operating time per cycle
-    direct(state.acc_pct),                 // Acceleration %
-    direct(state.safety_factor),           // Safety factor %
-    direct(state.bs_friction_torque),      // BS friction torque
+  const critical = [
+    entry(hasNumber(state.project_operating_time)),
+    entry(hasNumber(state.acc_pct)),
+    entry(hasNumber(state.safety_factor)),
+    entry(hasNumber(state.bs_friction_torque)),
   ];
 
-  // Additional (10%) — 7 parameters
-  const add = [
-    direct(state.project_shifts),          // Shifts per day
-    direct(state.project_hours_shift),     // Hours per shift
-    0.5,                                   // Hours per day — always derived
-    direct(state.project_days_week),       // Days per week
-    direct(state.project_total_cycle),     // Total cycle time
-    direct(state.project_service_life),    // Service life
-    0,                                     // Guide service life — not collected ⚠
+  const additional = [
+    entry(hasNumber(state.project_shifts)),
+    entry(hasNumber(state.project_hours_shift)),
+    entry(hasNumber(state.project_shifts) && hasNumber(state.project_hours_shift), 'derived'), // working hours/day
+    entry(hasNumber(state.project_days_week)),
+    entry(hasNumber(state.project_total_cycle)),
+    entry(hasNumber(state.project_service_life)),
+    entry(hasNumber(state.guide_service_life)),
   ];
 
-  const avg = arr => arr.reduce((a, b) => a + b, 0) / arr.length;
-  return Math.round((avg(must) * 0.60 + avg(crit) * 0.30 + avg(add) * 0.10) * 0.9 * 100);
+  function weightedCategoryScore(values, accuracyPct) {
+    if (!values.length) return 0;
+    const perParamWeight = accuracyPct / values.length;
+    return values.reduce((sum, value) => sum + value * perParamWeight, 0);
+  }
+
+  const baseScore =
+    weightedCategoryScore(must, ACCURACY.must) +
+    weightedCategoryScore(critical, ACCURACY.critical) +
+    weightedCategoryScore(additional, ACCURACY.additional);
+
+  // Selection model factor
+  // Catalogue selection: motor resolved from catalog in-app
+  // Application selection: external/manual motor reference
+  const hasCatalogSelection = Number(servo.motorIdx) >= 0 && !!servo.metrics;
+  const selectionModelFactor = hasCatalogSelection ? 1.0 : 0.9;
+
+  return Math.round(baseScore * selectionModelFactor * 100);
 }

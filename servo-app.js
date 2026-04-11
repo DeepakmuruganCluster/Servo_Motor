@@ -8,15 +8,20 @@ const DEFAULT_STATE = {
   project_operating_time: 2.6,
   project_service_life: 10,
   project_accuracy: 10,
-  dwell_time: 0.1,
+  dwell_time: 0,
   acc_pct: 25,
   steps: [
     { label: 'Step 1', stroke: 15, move_time: 1.0, external_force: 250, load_mass: 1.0, tilt_deg: 45 }
   ],
+  bs_model: '',
   mu: 0.03,
   guide_force: 15,
   guide_mass: 1.6,
+  guide_model: '',
+  guide_max_force: 1000,
+  guide_service_life: 5000,
   bs_pitch: 2,
+  bs_dia: 6,
   bs_efficiency: 0.98,
   bs_inertia: 1.0704e-5,
   bs_friction_torque: 0.05,
@@ -24,14 +29,16 @@ const DEFAULT_STATE = {
   bs_max_torque: 3,          // calc C334 — Ball screw permitted driving torque (Nm)
   bs_repetition_accuracy: 10,// calc C198 — Ball screw repetition accuracy (micron)
   // Parallel kit
-  has_parallel_kit: true,
+  has_parallel_kit: 1,
+  pk_model: '',
   pk_ratio: 1,
+  gb_ratio_user_selected: false,
   pk_no_load_torque: 0.07,
   pk_inertia: 2.67e-5,
   pk_max_torque: 3,
   pk_max_speed: 6000,
   // Gearbox
-  has_gearbox: false,
+  has_gearbox: 0,
   gb_ratio: 1,
   gb_efficiency: 0.97,
   gb_no_load_torque: 0.01,
@@ -43,6 +50,7 @@ const DEFAULT_STATE = {
   sm_permitted_inertia_ratio: 7, // calc C57 — SM Permitted Inertia Ratio
   sm_encoder_ppr: 1048576,       // calc C59 — SM Encoder resolution (ppr)
   safety_factor: 20,
+  motor_user_selected: false,
 };
 
 const MOTOR_DB = [
@@ -126,6 +134,10 @@ function normalizeState() {
   state.project_accuracy = Math.max(0, Number(state.project_accuracy) || 0);
   state.dwell_time = Math.max(0, Number(state.dwell_time) || 0);
   state.acc_pct = Math.min(80, Math.max(1, Number(state.acc_pct) || 25));
+  state.has_parallel_kit = Number(state.has_parallel_kit) === 0 ? 0 : 1;
+  state.has_gearbox = Number(state.has_gearbox) === 0 ? 0 : 1;
+  state.gb_ratio_user_selected = !!state.gb_ratio_user_selected;
+  state.motor_user_selected = !!state.motor_user_selected;
   if (!Array.isArray(state.steps) || state.steps.length === 0) {
     state.steps = [{ label: 'Step 1', stroke: 15, move_time: 1.0, external_force: 250, load_mass: 1.0, tilt_deg: 45 }];
   }
@@ -138,12 +150,21 @@ function normalizeState() {
     tilt_deg: Number(step.tilt_deg) || 0,
   }));
   state.mu = Math.max(0, Number(state.mu) || 0);
+  state.bs_model = String(state.bs_model || '').trim();
+  state.guide_model = String(state.guide_model || '').trim();
+  state.pk_model = String(state.pk_model || '').trim();
   state.guide_force = Math.max(0, Number(state.guide_force) || 0);
   state.guide_mass = Math.max(0, Number(state.guide_mass) || 0);
+  state.guide_max_force = Math.max(0, Number(state.guide_max_force) || 0);
+  state.guide_service_life = Math.max(0, Number(state.guide_service_life) || 0);
   state.bs_pitch = Math.max(0.1, Number(state.bs_pitch) || 0.1);
+  state.bs_dia = Math.max(0.1, Number(state.bs_dia) || 0.1);
   state.bs_efficiency = Math.min(1, Math.max(0.01, Number(state.bs_efficiency) || 0.98));
   state.bs_inertia = Math.max(0, Number(state.bs_inertia) || 0);
   state.bs_friction_torque = Math.max(0, Number(state.bs_friction_torque) || 0);
+  state.bs_max_speed = Math.max(0, Number(state.bs_max_speed) || 0);
+  state.bs_max_torque = Math.max(0, Number(state.bs_max_torque) || 0);
+  state.bs_repetition_accuracy = Math.max(0, Number(state.bs_repetition_accuracy) || 0);
   // Migrate old gear_* fields from saved state
   if ('gear_ratio' in state && !('pk_ratio' in state)) {
     state.pk_ratio          = Number(state.gear_ratio) || 1;
@@ -181,8 +202,16 @@ function estimateTorqueRMS(T_load, T_peak, t_acc, t_const, t_dec) {
 
 function calculateStepGroup(steps) {
   // Effective drive ratio and efficiency (PK × GB)
-  const eff_ratio = state.pk_ratio * state.gb_ratio;
-  const eff_efficiency = state.gb_efficiency;
+  const pkEnabled = Number(state.has_parallel_kit) !== 0;
+  const gbEnabled = Number(state.has_gearbox) !== 0;
+  const pkRatio = pkEnabled ? state.pk_ratio : 1;
+  const gbRatio = gbEnabled ? state.gb_ratio : 1;
+  const eff_ratio = pkRatio * gbRatio;
+  const eff_efficiency = gbEnabled ? state.gb_efficiency : 1;
+  const pkNoLoadTorque = pkEnabled ? state.pk_no_load_torque : 0;
+  const gbNoLoadTorque = gbEnabled ? state.gb_no_load_torque : 0;
+  const pkInertia = pkEnabled ? state.pk_inertia : 0;
+  const gbInertia = gbEnabled ? state.gb_inertia : 0;
   const pitch_m = state.bs_pitch / 1000;
 
   const results = {
@@ -193,7 +222,7 @@ function calculateStepGroup(steps) {
   };
 
   steps.forEach(step => {
-    const available_time = Math.max(step.move_time - state.dwell_time, 0.01);
+    const available_time = Math.max(step.move_time, 0.01);
     const t_acc   = Math.min(available_time / 2, available_time * (state.acc_pct / 100));
     const t_dec   = t_acc;
     const t_const = Math.max(0, available_time - t_acc - t_dec);
@@ -213,17 +242,17 @@ function calculateStepGroup(steps) {
 
     const T_mass = pitch_m > 0 ? (axial_force * pitch_m) / (2 * Math.PI * state.bs_efficiency) : 0;
     // pk_no_load is at BS shaft — included in safety factor (matches Excel row 143→183)
-    const T_bs_load = T_mass + state.bs_friction_torque + state.pk_no_load_torque;
+    const T_bs_load = T_mass + state.bs_friction_torque + pkNoLoadTorque;
 
     const J_mass      = total_mass * Math.pow(pitch_m / (2 * Math.PI), 2);
-    const J_reflected = J_mass + state.bs_inertia + state.pk_inertia + state.gb_inertia;
+    const J_reflected = J_mass + state.bs_inertia + pkInertia + gbInertia;
     const alpha       = pitch_m > 0 ? amax * (2 * Math.PI) / pitch_m : 0;
     const T_accel     = J_reflected * alpha;
 
     const T_peak_bs    = (T_bs_load + T_accel) * (1 + state.safety_factor / 100);
     // gb_no_load is at motor shaft — added after ratio (Excel row 186→187)
-    const T_peak_motor = eff_ratio > 0 ? T_peak_bs / (eff_ratio * eff_efficiency) + state.gb_no_load_torque : 0;
-    const T_load_motor = eff_ratio > 0 ? T_bs_load / (eff_ratio * eff_efficiency) + state.gb_no_load_torque : 0;
+    const T_peak_motor = eff_ratio > 0 ? T_peak_bs / (eff_ratio * eff_efficiency) + gbNoLoadTorque : 0;
+    const T_load_motor = eff_ratio > 0 ? T_bs_load / (eff_ratio * eff_efficiency) + gbNoLoadTorque : 0;
 
     const Iacc      = (t_acc / 3) * (T_load_motor ** 2 + T_load_motor * T_peak_motor + T_peak_motor ** 2);
     const Idec      = (t_dec / 3) * (T_peak_motor ** 2 + T_peak_motor * T_load_motor + T_load_motor ** 2);
@@ -288,10 +317,10 @@ function renderMetric(id, value, digits = 2, unit = '') {
 function render() {
   const result = calculate();
   lastResult = result;
+  updateMechanicalVisibility();
 
-  // Auto-select best motor if:
-  //   a) none selected, OR
-  //   b) currently selected motor is no longer viable (user changed parameters)
+  // Auto-sync motor selection to recommendation on first entry.
+  // Designers can later override manually (motor_user_selected = true).
   const _curMotor = selectedMotorIdx >= 0 ? MOTOR_DB[selectedMotorIdx] : null;
   const _needsBrakeCheck = state.steps.some(s => Number(s.tilt_deg) !== 0);
   const _curViable = _curMotor && (() => {
@@ -301,7 +330,13 @@ function render() {
         && (result.I_motor + Jr) / Jr <= state.sm_permitted_inertia_ratio
         && (!_needsBrakeCheck || _curMotor.brake);
   })();
-  if (!_curViable) {
+  if (!state.motor_user_selected) {
+    const best = suggestBestMotor(result);
+    if (best && best.viable && selectedMotorIdx !== best.index) {
+      selectedMotorIdx = best.index;
+      saveMotorSelection();
+    }
+  } else if (!_curViable && selectedMotorIdx < 0) {
     const best = suggestBestMotor(result);
     if (best && best.viable) {
       selectedMotorIdx = best.index;
@@ -381,12 +416,19 @@ function renderMotorTable(result) {
     return;
   }
 
+  const best = passMotors[0];
   const rows = passMotors.map(({ motor, index, speedUtil, torqueUtil, inertiaUtil }, rank) => {
-    const rowClass = index === selectedMotorIdx ? 'selected' : '';
+    const isSelected = index === selectedMotorIdx;
+    const isRecommended = best ? index === best.index : false;
+    const rowClass = `${isSelected ? 'selected' : ''} ${isRecommended ? 'recommended' : ''}`.trim();
+    const statusBits = [
+      isRecommended ? '<span class="badge badge-recommended">Recommended</span>' : '',
+      isSelected ? '<span class="badge badge-selected">Selected</span>' : '',
+    ].filter(Boolean).join(' ');
     return `
       <tr class="${rowClass}" data-index="${index}" style="cursor:pointer">
-        <td class="mono" style="font-weight:700;color:var(--accent)">${rank + 1}</td>
-        <td class="mono">${rank === 0 ? '★ ' : ''}${motor.pn}</td>
+        <td class="mono" style="font-weight:700">${rank + 1}</td>
+        <td class="mono">${motor.pn}${statusBits ? ` ${statusBits}` : ''}</td>
         <td>${motor.series}</td>
         <td class="mono">${motor.kW.toFixed(3)}</td>
         <td class="mono">${motor.Mn.toFixed(2)}</td>
@@ -404,6 +446,8 @@ function renderMotorTable(result) {
   tbody.querySelectorAll('tr').forEach(row => {
     row.addEventListener('click', () => {
       selectedMotorIdx = Number(row.dataset.index);
+      state.motor_user_selected = true;
+      saveState();
       saveMotorSelection();
       render();
     });
@@ -504,25 +548,6 @@ function renderVerification(result) {
       result: result.inertia_ratio !== null ? (result.inertia_ratio <= state.sm_permitted_inertia_ratio ? 'OK' : 'NOK') : '—',
       remark: '',
     },
-    // ── Gearbox ──
-    {
-      section: 'Gearbox',
-      param: 'GearBox Input speed, rpm',
-      capacity: state.gb_rated_input_speed > 0 ? String(Math.round(state.gb_rated_input_speed)) : '—',
-      actual: String(Math.round(result.Nmotor)),
-      util: state.gb_rated_input_speed > 0 ? result.Nmotor / state.gb_rated_input_speed : null,
-      result: state.gb_rated_input_speed > 0 ? (result.Nmotor <= state.gb_rated_input_speed ? 'OK' : 'NOK') : '#DIV/0!',
-      remark: '',
-    },
-    {
-      section: '',
-      param: 'GearBox Output Torque, Nm',
-      capacity: state.gb_rated_output_torque > 0 ? String(state.gb_rated_output_torque.toFixed(2)) : '—',
-      actual: result.T_peak_bs.toFixed(2),
-      util: state.gb_rated_output_torque > 0 ? result.T_peak_bs / state.gb_rated_output_torque : null,
-      result: state.gb_rated_output_torque > 0 ? (result.T_peak_bs <= state.gb_rated_output_torque ? 'OK' : 'NOK') : '#DIV/0!',
-      remark: '',
-    },
     // ── Ball screw ──
     {
       section: 'Ball screw',
@@ -553,6 +578,29 @@ function renderVerification(result) {
       remark: '',
     },
   ];
+
+  if (Number(state.has_gearbox) !== 0) {
+    rows.splice(3, 0,
+      {
+        section: 'Gearbox',
+        param: 'GearBox Input speed, rpm',
+        capacity: state.gb_rated_input_speed > 0 ? String(Math.round(state.gb_rated_input_speed)) : '—',
+        actual: String(Math.round(result.Nmotor)),
+        util: state.gb_rated_input_speed > 0 ? result.Nmotor / state.gb_rated_input_speed : null,
+        result: state.gb_rated_input_speed > 0 ? (result.Nmotor <= state.gb_rated_input_speed ? 'OK' : 'NOK') : '#DIV/0!',
+        remark: '',
+      },
+      {
+        section: '',
+        param: 'GearBox Output Torque, Nm',
+        capacity: state.gb_rated_output_torque > 0 ? String(state.gb_rated_output_torque.toFixed(2)) : '—',
+        actual: result.T_peak_bs.toFixed(2),
+        util: state.gb_rated_output_torque > 0 ? result.T_peak_bs / state.gb_rated_output_torque : null,
+        result: state.gb_rated_output_torque > 0 ? (result.T_peak_bs <= state.gb_rated_output_torque ? 'OK' : 'NOK') : '#DIV/0!',
+        remark: '',
+      }
+    );
+  }
 
   tbody.innerHTML = rows.map(row => {
     const utilStr    = fmtUtil(row.util);
@@ -606,6 +654,15 @@ function renderGearboxSuggestion(result) {
   }
 
   const best = viableRows[0];
+  if (Number(state.has_gearbox) !== 0 && !state.gb_ratio_user_selected && state.gb_ratio !== best.ratio) {
+    state.gb_ratio = best.ratio;
+    const inp = document.querySelector('[data-key="gb_ratio"]');
+    if (inp) inp.value = best.ratio;
+    saveState();
+    render();
+    return;
+  }
+
   const direct = viableRows.find(r => r.ratio === 1);
   const directTorque = direct ? direct.motorTorque : viableRows[viableRows.length - 1].motorTorque;
   const saving = best.ratio > 1
@@ -648,6 +705,7 @@ function renderGearboxSuggestion(result) {
     tr.addEventListener('click', () => {
       const ratio = Number(tr.dataset.ratio);
       state.gb_ratio = ratio;
+      state.gb_ratio_user_selected = true;
       // Update the input field visually
       const inp = document.querySelector('[data-key="gb_ratio"]');
       if (inp) inp.value = ratio;
@@ -693,13 +751,32 @@ function renderBestMotorSuggestion(result) {
   if (!container) return;
 
   const best = suggestBestMotor(result);
+  const selected = selectedMotorIdx >= 0 ? MOTOR_DB[selectedMotorIdx] : null;
   if (!best) {
     container.textContent = 'No servo motor recommendation available.';
     return;
   }
 
   if (best.viable) {
-    container.innerHTML = `Recommended motor: <strong>${best.motor.pn}</strong> (${best.motor.series}) — ${best.motor.Mn.toFixed(2)} Nm rated (Mn), ${best.motor.Mmax.toFixed(2)} Nm peak (Mmax), ${best.motor.Nn} rpm (Nn)${best.motor.brake ? ', <strong>Brake</strong>' : ''}.`;
+    const differs = selected && selectedMotorIdx !== best.index;
+    const selectedText = selected
+      ? `Current selection: <strong>${selected.pn}</strong>.`
+      : 'No motor selected yet.';
+    container.innerHTML = `
+      Recommended motor: <strong>${best.motor.pn}</strong> (${best.motor.series}) — ${best.motor.Mn.toFixed(2)} Nm rated (Mn), ${best.motor.Mmax.toFixed(2)} Nm peak (Mmax), ${best.motor.Nn} rpm (Nn)${best.motor.brake ? ', <strong>Brake</strong>' : ''}.
+      ${differs ? `<br><span style="color:var(--warning);font-weight:600">${selectedText}</span> <button id="apply-recommended-btn" type="button" class="button secondary" style="margin-left:8px;padding:4px 10px;font-size:11px;">Use Recommended</button>` : ''}
+      ${!selected ? `<br><span style="color:var(--muted)">${selectedText}</span>` : ''}
+    `;
+    const applyBtn = document.getElementById('apply-recommended-btn');
+    if (applyBtn) {
+      applyBtn.onclick = () => {
+        selectedMotorIdx = best.index;
+        state.motor_user_selected = true;
+        saveState();
+        saveMotorSelection();
+        render();
+      };
+    }
   } else {
     container.innerHTML = `Closest motor: <strong>${best.motor.pn}</strong> — ${best.motor.Mn.toFixed(2)} Nm rated, ${best.motor.Nn} rpm (may still exceed one or more limits).`;
   }
@@ -762,7 +839,20 @@ function renderInputs() {
       el.value = state[key];
     }
   });
+  updateMechanicalVisibility();
   renderMovementSteps();
+}
+
+function updateMechanicalVisibility() {
+  const parallelBlock = document.getElementById('parallel-kit-block');
+  const gearboxBlock = document.getElementById('gearbox-block');
+  const gbSuggestionBlock = document.getElementById('gearbox-suggestion-block');
+  const hasParallel = Number(state.has_parallel_kit) !== 0;
+  const hasGearbox = Number(state.has_gearbox) !== 0;
+
+  if (parallelBlock) parallelBlock.style.display = hasParallel ? '' : 'none';
+  if (gearboxBlock) gearboxBlock.style.display = hasGearbox ? '' : 'none';
+  if (gbSuggestionBlock) gbSuggestionBlock.style.display = hasGearbox ? '' : 'none';
 }
 
 function handleInput(event) {
@@ -778,7 +868,17 @@ function handleInput(event) {
       state.steps[index][field] = field === 'label' ? String(value) : Number(value);
     }
   } else if (key) {
-    state[key] = Number(value);
+    if (target.type === 'number') {
+      state[key] = Number(value);
+    } else if (target.tagName === 'SELECT') {
+      const maybeNum = Number(value);
+      state[key] = Number.isFinite(maybeNum) ? maybeNum : String(value);
+    } else {
+      state[key] = String(value);
+    }
+    if (key === 'gb_ratio') {
+      state.gb_ratio_user_selected = true;
+    }
   } else {
     return;
   }
@@ -807,13 +907,13 @@ function parseExcelStepRows(rows) {
   const headers = rows[headerRowIndex].map(cell => normalizeLabel(cell));
   const columnMap = new Map();
   headers.forEach((label, index) => {
-    if (label.includes('application') || label.includes('op') || label.includes('operation')) columnMap.set(index, 'label');
+    if (label.includes('application') || label.includes('operation') || label.includes('axis name') || label.includes('appl') || label.includes('stn no')) columnMap.set(index, 'label');
     else if (label.includes('stroke')) columnMap.set(index, 'stroke');
     else if (label.includes('move time')) columnMap.set(index, 'move_time');
     else if (label.includes('acc') || label.includes('acceleration')) columnMap.set(index, '_ignore_acc');
-    else if (label.includes('external force')) columnMap.set(index, 'external_force');
-    else if (label.includes('load mass') || label.includes('moving mass')) columnMap.set(index, 'load_mass');
-    else if (label.includes('tilt')) columnMap.set(index, 'tilt_deg');
+    else if (label.includes('external force') || label.includes('f pick') || label.includes('f load') || label.includes('f return')) columnMap.set(index, 'external_force');
+    else if (label.includes('load mass') || label.includes('moving mass') || label.includes('payload mass')) columnMap.set(index, 'load_mass');
+    else if (label.includes('tilt') || label.includes('orientation') || label.includes('theta')) columnMap.set(index, 'tilt_deg');
   });
 
   const steps = [];
@@ -826,7 +926,7 @@ function parseExcelStepRows(rows) {
     for (const [col, field] of columnMap.entries()) {
       if (col >= row.length) continue;
       const cell = row[col];
-      if (field === 'application') {
+      if (field === 'label') {
         const text = String(cell || '').trim();
         if (text) {
           step[field] = text;
@@ -862,12 +962,16 @@ function parseExcelStepRows(rows) {
 }
 
 function parseExcelValues(rows) {
-  let updated = parseExcelStepRows(rows);
+  const stepsFromTable = parseExcelStepRows(rows);
+  let updated = stepsFromTable;
 
   // calc sheet: col A=index0 (section heading), col B=index1 (label), col C=index2 (value)
   // Try col B as label, col C as value first; fall back to col A / col B for other sheets
-  const mapping = new Map([
-    // Application requirement (calc B4-B18)
+  //
+  // NOTE: More-specific keys must appear BEFORE less-specific ones so that
+  // substring matching picks the right entry (Map iterates in insertion order).
+  const rawMappings = [
+    // Application requirement
     ['no of shifts per day',                    'project_shifts'],
     ['working hours per shift',                 'project_hours_shift'],
     ['working days per week',                   'project_days_week'],
@@ -878,27 +982,31 @@ function parseExcelValues(rows) {
     ['movement stroke required',                'stroke'],
     ['cycle time available for single movement','move_time'],
     ['external force on the moving mass',       'external_force'],
-    ['moving mass',                             'load_mass'],
     ['tilt angle of the setup',                 'tilt_deg'],
     ['acceleration %',                          'acc_pct'],
     ['acceleration time %',                     'acc_pct'],
     ['accel decel time %',                      'acc_pct'],
     ['safety factor %',                         'safety_factor'],
     ['safety factor',                           'safety_factor'],
-    // Ball screw (calc B22-B23, B69-B73)
-    ['ball screw pitch',                        'bs_pitch'],
-    ['ball screw efficiency',                   'bs_efficiency_pct'],  // % → convert
-    ['ball screw friction torque',              'bs_friction_torque'],
-    ['ball screw friction torque @ application','bs_friction_torque'],
-    ['ball screw moment of inertia',            'bs_inertia'],
+    // Ball screw — specific labels first to prevent false substring matches
+    ['selected ball screw model',               'bs_model'],
+    ['ball screw - moving mass',                '_ignore'],   // spindle mass, not payload
     ['ball screw - moment of inertia',          'bs_inertia'],
+    ['ball screw moment of inertia',            'bs_inertia'],
     ['ball screw - repetition accuracy',        'bs_repetition_accuracy'],
     ['ball screw repetition accuracy',          'bs_repetition_accuracy'],
-    ['ball screw permitted driving torque max', 'bs_max_torque'],
     ['ball screw - permitted driving torque max','bs_max_torque'],
-    ['ball screw - permitted velocity',         'bs_max_speed_mms'], // mm/sec, convert later
+    ['ball screw permitted driving torque max', 'bs_max_torque'],
     ['ball screw - permitted driving torque',   'bs_max_torque'],
-    // Parallel kit (calc B26-B30)
+    ['ball screw - permitted velocity',         'bs_max_speed_mms'], // mm/sec, convert later
+    ['ball screw friction torque',              'bs_friction_torque'],
+    ['no load driving torque of spindle',       'bs_friction_torque'],
+    ['ball screw efficiency',                   'bs_efficiency_pct'],  // % → convert
+    ['ball screw pitch',                        'bs_pitch'],
+    ['ball screw dia',                          'bs_dia'],
+    // Parallel kit
+    ['selected parallel kit model',             'pk_model'],
+    ['gear ratio required',                     '_ignore'],
     ['gear ratio',                              'pk_ratio'],
     ['no load driving torque',                  'pk_no_load_torque'],
     ['no. load driving torque',                 'pk_no_load_torque'],
@@ -909,7 +1017,7 @@ function parseExcelValues(rows) {
     ['max transferable torque',                 'pk_max_torque'],
     ['max rotational speed',                    'pk_max_speed'],
     ['max. rotational speed',                   'pk_max_speed'],
-    // Gearbox (calc B42-B47, B76-B82)
+    // Gearbox
     ['selected gear ratio',                     'gb_ratio'],
     ['gb- efficiency',                          'gb_efficiency_pct'],  // % → convert
     ['gb - efficiency',                         'gb_efficiency_pct'],
@@ -923,22 +1031,32 @@ function parseExcelValues(rows) {
     ['gb - inertia',                            'gb_inertia'],
     ['gb - rated input speed',                  'gb_rated_input_speed'],
     ['gb - rated output torque',                'gb_rated_output_torque'],
-    // Servo motor (calc B57-B59)
+    // Servo motor
     ['sm - permitted inertia ratio',            'sm_permitted_inertia_ratio'],
     ['sm - encoder reolution',                  'sm_encoder_ppr'],
     ['sm - encoder resolution',                 'sm_encoder_ppr'],
-    // Guide (calc B33-B34)
+    // Guide — "displacement force" is specific; "moving mass" is a fallback for the
+    // guide carriage mass (must come after "ball screw - moving mass" above)
+    ['selected guide model',                    'guide_model'],
     ['displacement force required',             'guide_force'],
+    ['max withstand force',                     'guide_max_force'],
+    ['service life for 100% loading',           'guide_service_life'],
     ['moving mass',                             'guide_mass'],
-  ]);
+  ];
+  const mapping = new Map(rawMappings.map(([label, key]) => [normalizeLabel(label), key]));
+  const TEXT_FIELDS = new Set(['bs_model', 'pk_model', 'guide_model']);
+
+  // Step-level fields that come from single-operation rows in the DATA INPUTS section.
+  // They are stored temporarily and promoted to steps[0] after parsing.
+  // stroke, move_time, external_force, tilt_deg are unambiguous step fields.
+  // load_mass ("moving mass") is ambiguous: first occurrence = payload (step), second = guide carriage.
+  const STEP_FIELDS = new Set(['stroke', 'move_time', 'external_force', 'tilt_deg']);
 
   function resolveRow(row) {
-    // Try layout A: col B = label, col C = value (calc sheet)
-    // Try layout B: col A = label, col B = value (Servo Inputs sheet)
-    // Pick whichever yields a mapping match
     const tryMatch = (lbl) => {
       const label = normalizeLabel(lbl);
-      if (!label) return null;
+      // Require at least 5 characters to avoid false substring matches (e.g. "Appl", "Op")
+      if (!label || label.length < 5) return null;
       let key = mapping.get(label);
       if (!key) {
         for (const [k, v] of mapping) {
@@ -948,16 +1066,34 @@ function parseExcelValues(rows) {
       return key || null;
     };
 
-    // Layout A: col1 = label, col2 = value
+    // Layout A: col1 = label, col2 = value (calc sheet)
     const keyA = tryMatch(row[1]);
     if (keyA) return { key: keyA, value: row[2] };
 
-    // Layout B: col0 = label, col1 = value
+    // Layout B: col0 = label, col1 = value (Servo Inputs sheet)
     const keyB = tryMatch(row[0]);
     if (keyB) return { key: keyB, value: row[1] };
 
     return null;
   }
+
+  function parseNumericCell(raw) {
+    if (typeof raw === 'number') return Number.isFinite(raw) ? raw : NaN;
+    const text = String(raw ?? '').trim().replace(/,/g, '');
+    if (!text) return NaN;
+    const direct = Number(text.replace(/%$/, ''));
+    if (Number.isFinite(direct)) return direct;
+    const match = text.match(/[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?/);
+    if (!match) return NaN;
+    const parsed = Number(match[0]);
+    return Number.isFinite(parsed) ? parsed : NaN;
+  }
+
+  // Temp holders for single-operation step fields
+  const importedStep = {};
+  // "moving mass" appears twice in the template: first = DATA INPUTS payload, second = guide carriage.
+  // The Map maps it to 'guide_mass'; we intercept the first hit as load_mass for steps[0].
+  let movingMassHits = 0;
 
   for (const row of rows) {
     if (!row || row.length < 2) continue;
@@ -967,8 +1103,30 @@ function parseExcelValues(rows) {
 
     let { key, value } = match;
 
-    const parsed = Number(String(value).replace(/[^0-9.eE+-]/g, ''));
+    if (TEXT_FIELDS.has(key)) {
+      const textValue = String(value || '').trim();
+      if (textValue) {
+        state[key] = textValue;
+        updated++;
+      }
+      continue;
+    }
+
+    const parsed = parseNumericCell(value);
     if (isNaN(parsed)) continue;
+
+    // "moving mass": first hit → payload (steps[0].load_mass), second hit → guide_mass
+    if (key === 'guide_mass') {
+      if (stepsFromTable === 0 && movingMassHits === 0) {
+        importedStep.load_mass = parsed;
+        updated++;
+      } else {
+        state.guide_mass = parsed;
+        updated++;
+      }
+      movingMassHits++;
+      continue;
+    }
 
     // Unit conversions and special keys
     if (key === 'bs_max_speed_mms') {
@@ -976,27 +1134,40 @@ function parseExcelValues(rows) {
       continue;
     }
     if (key === 'bs_efficiency_pct') {
-      // Template stores as % (e.g. 98), state needs decimal (0.98)
       state.bs_efficiency = parsed > 1 ? parsed / 100 : parsed; updated++; continue;
     }
     if (key === 'gb_efficiency_pct') {
       state.gb_efficiency = parsed > 1 ? parsed / 100 : parsed; updated++; continue;
     }
     if (key === 'pk_inertia_mm2') {
-      // Template stores in kg·mm², state needs kg·m²
       state.pk_inertia = parsed * 1e-6; updated++; continue;
     }
     if (key === 'acc_pct') {
-      // Calc sheet stores as decimal fraction (0.25), state needs percentage (25)
       state.acc_pct = parsed <= 1 ? parsed * 100 : parsed; updated++; continue;
     }
     if (key === 'safety_factor') {
-      // Calc sheet stores as decimal fraction (0.20), state needs percentage (20)
       state.safety_factor = parsed <= 1 ? parsed * 100 : parsed; updated++; continue;
+    }
+
+    // Collect step-level fields separately (only when no step table was parsed)
+    if (STEP_FIELDS.has(key) && stepsFromTable === 0) {
+      importedStep[key] = parsed;
+      updated++;
+      continue;
     }
 
     state[key] = parsed;
     updated++;
+  }
+
+  // Promote single-operation step fields into steps[0] when no step table was found.
+  // This handles the "Servo Inputs" template sheet where stroke, move_time etc. appear
+  // as individual key-value rows rather than as a tabular step list.
+  if (stepsFromTable === 0 && Object.keys(importedStep).length > 0) {
+    if (!Array.isArray(state.steps) || state.steps.length === 0) {
+      state.steps = [{ label: 'Step 1', stroke: 15, move_time: 1.0, external_force: 250, load_mass: 1.0, tilt_deg: 45 }];
+    }
+    Object.assign(state.steps[0], importedStep);
   }
 
   return updated;
@@ -1148,6 +1319,8 @@ function init() {
     const row = event.target.closest('tr[data-index]');
     if (!row) return;
     selectedMotorIdx = Number(row.dataset.index);
+    state.motor_user_selected = true;
+    saveState();
     saveMotorSelection();
     render();
   });
@@ -1279,7 +1452,7 @@ function renderMotionProfileChart() {
   let totalT = 0, maxV = 0;
 
   state.steps.forEach((step, i) => {
-    const avail   = Math.max(step.move_time - state.dwell_time, 0.01);
+    const avail   = Math.max(step.move_time, 0.01);
     const t_acc   = Math.min(avail / 2, avail * (state.acc_pct / 100));
     const t_dec   = t_acc;
     const t_const = Math.max(0, avail - t_acc - t_dec);
@@ -1405,106 +1578,175 @@ function renderMotionProfileChart() {
    REPORT — Download only (no UI display)
 ───────────────────────────────────────────── */
 function downloadReport(result) {
-  if (!window.XLSX) { alert('XLSX library not loaded.'); return; }
-
-  const motor    = result.selectedMotor;
-  const sysAcc   = calculateSystemAccuracy();
-  const dateStr  = new Date().toLocaleDateString(undefined, { day:'numeric', month:'long', year:'numeric' });
-
-  const aoa = [];
-
-  // Header
-  aoa.push(['ClusterVise — Servo Sizing Report']);
-  aoa.push([dateStr]);
-  aoa.push([]);
-
-  // At Ball screw shaft
-  aoa.push(['At Ball screw shaft']);
-  aoa.push(['Torque Required at ball screw shaft', result.T_peak_bs.toFixed(2), 'Nm']);
-  aoa.push(['Speed Required at ball screw shaft',  Math.round(result.Nscrew),    'rpm']);
-  aoa.push(['Linear Speed of the ball screw shaft', result.Vmax_mm_s.toFixed(1), 'mm/sec']);
-  aoa.push([]);
-
-  // At Motor shaft
-  aoa.push(['At Motor shaft']);
-  aoa.push(['Torque Required at Motor shaft', result.T_peak_motor.toFixed(2), 'Nm']);
-  aoa.push(['Speed Required at Motor shaft',  Math.round(result.Nmotor),       'rpm']);
-  aoa.push([]);
-
-  // Selected Motor
-  aoa.push(['Selected Motor']);
-  if (motor) {
-    aoa.push(['Part number',           motor.pn]);
-    aoa.push(['Series',                motor.series]);
-    aoa.push(['Rated torque Mn',       motor.Mn,   'Nm']);
-    aoa.push(['Peak torque Mmax',      motor.Mmax, 'Nm']);
-    aoa.push(['Rated speed Nn',        motor.Nn,   'rpm']);
-    aoa.push(['Rotor inertia Jmot',    motor.Jmot, 'kg·cm²']);
-    aoa.push(['Holding brake',         motor.brake ? 'Yes' : 'No']);
-  } else {
-    aoa.push(['No motor selected']);
+  if (!window.jspdf || !window.jspdf.jsPDF) {
+    alert('PDF library not loaded.');
+    return;
   }
-  aoa.push([]);
 
-  // Verification Checklist (blue rows only — exact Excel names)
-  aoa.push(['Verification Checklist']);
-  aoa.push(['Parameters', 'Capacity / Selected', 'Actual / Required', 'Utilization', 'Result', 'Remarks']);
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+  if (typeof doc.autoTable !== 'function') {
+    alert('PDF table plugin not loaded.');
+    return;
+  }
+  const motor = result.selectedMotor;
+  const sysAcc = calculateSystemAccuracy();
+  const dateStr = new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
 
-  const chkRows = [
-    ['Motor Rated Speed Nn, rpm',
-      motor ? motor.Nn : '',
-      Math.round(result.Nmotor),
-      motor ? (result.Nmotor / motor.Nn * 100).toFixed(0) + '%' : '',
-      motor ? (result.Nmotor <= motor.Nn ? 'OK' : 'NOK') : ''],
-    ['Motor Rated Torque Mn, Nm',
-      motor ? motor.Mn : '',
-      result.T_peak_motor.toFixed(2),
-      motor ? (result.T_peak_motor / motor.Mn * 100).toFixed(0) + '%' : '',
-      motor ? (result.T_peak_motor <= motor.Mn ? 'OK' : 'Check Duty cycle') : ''],
-    ['Motor Inertia Ratio',
-      state.sm_permitted_inertia_ratio,
-      result.inertia_ratio !== null ? result.inertia_ratio.toFixed(2) : '',
-      result.inertia_ratio !== null ? (result.inertia_ratio / state.sm_permitted_inertia_ratio * 100).toFixed(0) + '%' : '',
-      result.inertia_ratio !== null ? (result.inertia_ratio <= state.sm_permitted_inertia_ratio ? 'OK' : 'NOK') : ''],
-    ['GearBox Input speed, rpm',
-      state.gb_rated_input_speed || '',
-      Math.round(result.Nmotor),
-      state.gb_rated_input_speed > 0 ? (result.Nmotor / state.gb_rated_input_speed * 100).toFixed(0) + '%' : '#DIV/0!',
-      state.gb_rated_input_speed > 0 ? (result.Nmotor <= state.gb_rated_input_speed ? 'OK' : 'NOK') : '#DIV/0!'],
-    ['GearBox Output Torque, Nm',
-      state.gb_rated_output_torque || '',
-      result.T_peak_bs.toFixed(2),
-      state.gb_rated_output_torque > 0 ? (result.T_peak_bs / state.gb_rated_output_torque * 100).toFixed(0) + '%' : '#DIV/0!',
-      state.gb_rated_output_torque > 0 ? (result.T_peak_bs <= state.gb_rated_output_torque ? 'OK' : 'NOK') : '#DIV/0!'],
-    ['Ball screw max speed, rpm',
-      state.bs_max_speed,
-      Math.round(result.Nscrew),
-      (result.Nscrew / state.bs_max_speed * 100).toFixed(0) + '%',
-      result.Nscrew <= state.bs_max_speed ? 'OK' : 'NOK',
-      'Wish list'],
-    ['Ball screw max torque',
-      state.bs_max_torque,
-      result.T_peak_bs.toFixed(2),
-      (result.T_peak_bs / state.bs_max_torque * 100).toFixed(0) + '%',
-      result.T_peak_bs <= state.bs_max_torque ? 'OK' : 'NOK',
-      'Wish list'],
-    ['Movement accuracy of the system, (+/-) micron',
-      sysAcc.toFixed(2),
-      state.project_accuracy,
-      (sysAcc / state.project_accuracy * 100).toFixed(0) + '%',
-      sysAcc <= state.project_accuracy ? 'OK' : 'NOK'],
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const marginX = 40;
+  let y = 44;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text('ClusterVise - Servo Sizing Report', marginX, y);
+  y += 18;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text(`Date: ${dateStr}`, marginX, y);
+  y += 18;
+
+  const primaryRows = [
+    ['Torque Required at ball screw shaft', `${result.T_peak_bs.toFixed(2)} Nm`],
+    ['Speed Required at ball screw shaft', `${Math.round(result.Nscrew)} rpm`],
+    ['Linear Speed of ball screw shaft', `${result.Vmax_mm_s.toFixed(1)} mm/s`],
+    ['Torque Required at motor shaft', `${result.T_peak_motor.toFixed(2)} Nm`],
+    ['Speed Required at motor shaft', `${Math.round(result.Nmotor)} rpm`],
+    ['RMS Torque', `${result.T_rms_motor.toFixed(3)} Nm`],
+    ['Inertia Ratio', result.inertia_ratio !== null ? result.inertia_ratio.toFixed(2) : '—'],
   ];
-  chkRows.forEach(r => aoa.push(r));
 
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  const wb = { SheetNames: ['Report'], Sheets: { Report: ws } };
-  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-  const url = URL.createObjectURL(new Blob([buf], { type: 'application/octet-stream' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'ClusterVise_Servo_Report.xlsx';
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  doc.autoTable({
+    startY: y,
+    head: [['Primary Results', 'Value']],
+    body: primaryRows,
+    theme: 'grid',
+    styles: { fontSize: 9, cellPadding: 5 },
+    headStyles: { fillColor: [31, 56, 100] },
+    margin: { left: marginX, right: marginX },
+  });
+  y = doc.lastAutoTable.finalY + 14;
+
+  const motorRows = motor ? [
+    ['Part number', motor.pn],
+    ['Series', motor.series],
+    ['Rated torque Mn', `${motor.Mn.toFixed(2)} Nm`],
+    ['Peak torque Mmax', `${motor.Mmax.toFixed(2)} Nm`],
+    ['Rated speed Nn', `${motor.Nn} rpm`],
+    ['Rotor inertia Jmot', `${motor.Jmot.toFixed(3)} kg·cm²`],
+    ['Holding brake', motor.brake ? 'Yes' : 'No'],
+  ] : [['Selected Motor', 'No motor selected']];
+
+  doc.autoTable({
+    startY: y,
+    head: [['Selected Motor', 'Details']],
+    body: motorRows,
+    theme: 'grid',
+    styles: { fontSize: 9, cellPadding: 5 },
+    headStyles: { fillColor: [31, 56, 100] },
+    margin: { left: marginX, right: marginX },
+  });
+  y = doc.lastAutoTable.finalY + 14;
+
+  const checklistRows = [
+    [
+      'Motor Rated Speed Nn, rpm',
+      motor ? String(motor.Nn) : '—',
+      String(Math.round(result.Nmotor)),
+      motor ? `${(result.Nmotor / motor.Nn * 100).toFixed(0)}%` : '—',
+      motor ? (result.Nmotor <= motor.Nn ? 'OK' : 'NOK') : '—',
+      '',
+    ],
+    [
+      'Motor Rated Torque Mn, Nm',
+      motor ? motor.Mn.toFixed(2) : '—',
+      result.T_peak_motor.toFixed(2),
+      motor ? `${(result.T_peak_motor / motor.Mn * 100).toFixed(0)}%` : '—',
+      motor ? (result.T_peak_motor <= motor.Mn ? 'OK' : 'Check Duty cycle') : '—',
+      '',
+    ],
+    [
+      'Motor Inertia Ratio',
+      String(state.sm_permitted_inertia_ratio),
+      result.inertia_ratio !== null ? result.inertia_ratio.toFixed(2) : '—',
+      result.inertia_ratio !== null ? `${(result.inertia_ratio / state.sm_permitted_inertia_ratio * 100).toFixed(0)}%` : '—',
+      result.inertia_ratio !== null ? (result.inertia_ratio <= state.sm_permitted_inertia_ratio ? 'OK' : 'NOK') : '—',
+      '',
+    ],
+  ];
+
+  if (Number(state.has_gearbox) !== 0) {
+    checklistRows.push(
+      [
+        'GearBox Input speed, rpm',
+        state.gb_rated_input_speed > 0 ? String(Math.round(state.gb_rated_input_speed)) : '—',
+        String(Math.round(result.Nmotor)),
+        state.gb_rated_input_speed > 0 ? `${(result.Nmotor / state.gb_rated_input_speed * 100).toFixed(0)}%` : '#DIV/0!',
+        state.gb_rated_input_speed > 0 ? (result.Nmotor <= state.gb_rated_input_speed ? 'OK' : 'NOK') : '#DIV/0!',
+        '',
+      ],
+      [
+        'GearBox Output Torque, Nm',
+        state.gb_rated_output_torque > 0 ? state.gb_rated_output_torque.toFixed(2) : '—',
+        result.T_peak_bs.toFixed(2),
+        state.gb_rated_output_torque > 0 ? `${(result.T_peak_bs / state.gb_rated_output_torque * 100).toFixed(0)}%` : '#DIV/0!',
+        state.gb_rated_output_torque > 0 ? (result.T_peak_bs <= state.gb_rated_output_torque ? 'OK' : 'NOK') : '#DIV/0!',
+        '',
+      ],
+    );
+  }
+
+  checklistRows.push(
+    [
+      'Ball screw max speed, rpm',
+      String(Math.round(state.bs_max_speed)),
+      String(Math.round(result.Nscrew)),
+      state.bs_max_speed > 0 ? `${(result.Nscrew / state.bs_max_speed * 100).toFixed(0)}%` : '#DIV/0!',
+      result.Nscrew <= state.bs_max_speed ? 'OK' : 'NOK',
+      'Wish list',
+    ],
+    [
+      'Ball screw max torque',
+      state.bs_max_torque.toFixed(2),
+      result.T_peak_bs.toFixed(2),
+      state.bs_max_torque > 0 ? `${(result.T_peak_bs / state.bs_max_torque * 100).toFixed(0)}%` : '#DIV/0!',
+      result.T_peak_bs <= state.bs_max_torque ? 'OK' : 'NOK',
+      'Wish list',
+    ],
+    [
+      'Movement accuracy of system (+/- micron)',
+      sysAcc.toFixed(2),
+      String(state.project_accuracy),
+      state.project_accuracy > 0 ? `${(sysAcc / state.project_accuracy * 100).toFixed(0)}%` : '#DIV/0!',
+      sysAcc <= state.project_accuracy ? 'OK' : 'NOK',
+      '',
+    ],
+  );
+
+  if (y > 700) {
+    doc.addPage();
+    y = 44;
+  }
+
+  doc.autoTable({
+    startY: y,
+    head: [['Verification Checklist', 'Capacity / Selected', 'Actual / Required', 'Utilization', 'Result', 'Remarks']],
+    body: checklistRows,
+    theme: 'grid',
+    styles: { fontSize: 8.5, cellPadding: 4 },
+    headStyles: { fillColor: [31, 56, 100] },
+    margin: { left: marginX, right: marginX },
+    columnStyles: {
+      0: { cellWidth: pageWidth * 0.34 },
+      1: { cellWidth: pageWidth * 0.13 },
+      2: { cellWidth: pageWidth * 0.13 },
+      3: { cellWidth: pageWidth * 0.13 },
+      4: { cellWidth: pageWidth * 0.11 },
+      5: { cellWidth: pageWidth * 0.10 },
+    },
+  });
+
+  doc.save('ClusterVise_Servo_Report.pdf');
 }
 
 window.addEventListener('DOMContentLoaded', init);

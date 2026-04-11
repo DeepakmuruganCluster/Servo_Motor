@@ -31,22 +31,110 @@
       font-size: 13px;
     }
 
-    /* Mechanical config: two sub-sections side-by-side inside the card */
+    /* Mechanical configuration refresh */
+    .card-mechanical {
+      background:
+        linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+    }
+    .mech-intro {
+      font-size: 13px;
+      color: var(--muted);
+      margin: -10px 0 18px;
+    }
+    .mech-availability {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 18px;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #f8fafc;
+    }
+    .mech-availability .field-row label {
+      font-size: 12px;
+      font-weight: 700;
+      color: #334155;
+    }
+    .mech-availability .field-row select {
+      background: #fff;
+    }
     .mech-cols {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 24px;
     }
+    .mech-cols > .mech-sub + .mech-sub {
+      border-left: 1px solid var(--border);
+      padding-left: 24px;
+    }
     @media (max-width: 820px) {
       .mech-cols { grid-template-columns: 1fr; }
+      .mech-cols > .mech-sub + .mech-sub {
+        border-left: 0;
+        border-top: 1px solid var(--border);
+        padding-left: 0;
+        padding-top: 18px;
+      }
     }
     .mech-sub h3 {
-      font-size: 13px;
-      font-weight: 700;
+      font-size: 12px;
+      font-weight: 800;
       text-transform: uppercase;
-      letter-spacing: .06em;
-      color: var(--accent);
-      margin-bottom: 14px;
+      letter-spacing: .08em;
+      color: #0f172a;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .mech-caption {
+      margin: -4px 0 10px;
+      font-size: 12px;
+      color: #64748b;
+      line-height: 1.45;
+    }
+    .mech-stack {
+      display: grid;
+      gap: 14px;
+    }
+    .mech-panel {
+      border: 1px solid #d7deea;
+      border-radius: 14px;
+      background: #ffffff;
+      padding: 14px 14px 12px;
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+    }
+    .mech-panel h4 {
+      margin: 0 0 12px;
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: #1e3a8a;
+      padding-bottom: 8px;
+      border-bottom: 1px dashed #d8dde6;
+    }
+    .mech-panel .field-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px 12px;
+    }
+    .mech-panel .field-row label {
+      font-size: 12px;
+      gap: 6px;
+      color: #475569;
+    }
+    .mech-panel .field-row input {
+      padding: 9px 11px;
+      font-size: 13px;
+      background: #f8fafc;
+    }
+    @media (max-width: 980px) {
+      .mech-panel .field-grid {
+        grid-template-columns: 1fr;
+      }
+      .mech-availability {
+        grid-template-columns: 1fr;
+      }
     }
 
     /* Step cards: horizontal layout inside the card */
@@ -98,7 +186,7 @@
       <section class="card">
         <h2>Motion Steps</h2>
         <p style="font-size:13px;color:var(--muted);margin:-10px 0 18px">
-          Each step is one position movement for this motor. Add as many as the axis performs per cycle.
+          Define each axis motion segment as a discrete positioning event, and include every segment executed within one machine cycle.
         </p>
 
         <div class="field-grid">
@@ -138,14 +226,14 @@
            COLUMN 2 — MECHANICAL CONFIGURATION
            How is this motor SET UP?
       ════════════════════════════════════════════ -->
-      <section class="card">
+      <section class="card card-mechanical">
         <h2>Mechanical Configuration</h2>
-        <p style="font-size:13px;color:var(--muted);margin:-10px 0 18px">
+        <p class="mech-intro">
           The physical hardware connecting this motor to the load.
         </p>
 
         <!-- Parallel Kit / Gearbox presence -->
-        <div class="field-grid" style="margin-bottom:20px;">
+        <div class="mech-availability">
           <div class="field-row">
             <label>Parallel Kit
               <select data-key="has_parallel_kit" style="padding:9px 12px;font-size:13px;">
@@ -165,121 +253,165 @@
         </div>
 
         <div class="mech-cols">
-          <!-- Ball screw + Guide -->
           <div class="mech-sub">
-            <h3>Ball Screw &amp; Guide</h3>
-            <div class="field-grid">
-              <div class="field-row">
-                <label>Pitch (mm)
-                  <input data-key="bs_pitch" type="number" step="0.1" />
-                </label>
+            <h3>Ball Screw</h3>
+            <p class="mech-caption">Core screw geometry and drivetrain reduction used for speed and torque conversion.</p>
+            <div class="mech-stack">
+              <div class="mech-panel">
+                <h4>Ball Screw Inputs</h4>
+                <div class="field-grid">
+                  <div class="field-row">
+                    <label>Pitch (mm)
+                      <input data-key="bs_pitch" type="number" step="0.1" />
+                    </label>
+                  </div>
+                  <div class="field-row">
+                    <label>Diameter (mm)
+                      <input data-key="bs_dia" type="number" step="0.1" />
+                    </label>
+                  </div>
+                  <div class="field-row">
+                    <label>Efficiency (0–1)
+                      <input data-key="bs_efficiency" type="number" step="0.001" />
+                    </label>
+                  </div>
+                  <div class="field-row">
+                    <label>Friction torque (Nm)
+                      <input data-key="bs_friction_torque" type="number" step="0.01" />
+                    </label>
+                  </div>
+                  <div class="field-row">
+                    <label>Inertia (kg·m²)
+                      <input data-key="bs_inertia" type="number" step="0.0000001" />
+                    </label>
+                  </div>
+                  <div class="field-row">
+                    <label>Max permitted speed (rpm)
+                      <input data-key="bs_max_speed" type="number" step="100" />
+                    </label>
+                  </div>
+                  <div class="field-row">
+                    <label>Max permitted torque (Nm)
+                      <input data-key="bs_max_torque" type="number" step="0.1" />
+                    </label>
+                  </div>
+                  <div class="field-row">
+                    <label>Repetition accuracy (+/- µm)
+                      <input data-key="bs_repetition_accuracy" type="number" step="1" />
+                    </label>
+                  </div>
+                </div>
               </div>
-              <div class="field-row">
-                <label>Efficiency (0–1)
-                  <input data-key="bs_efficiency" type="number" step="0.001" />
-                </label>
-              </div>
-              <div class="field-row">
-                <label>Friction torque (Nm)
-                  <input data-key="bs_friction_torque" type="number" step="0.01" />
-                </label>
-              </div>
-              <div class="field-row">
-                <label>Inertia (kg·m²)
-                  <input data-key="bs_inertia" type="number" step="0.0000001" />
-                </label>
-              </div>
-              <div class="field-row">
-                <label>Guide displacement force (N)
-                  <input data-key="guide_force" type="number" step="1" />
-                </label>
-              </div>
-              <div class="field-row">
-                <label>Guide moving mass (kg)
-                  <input data-key="guide_mass" type="number" step="0.1" />
-                </label>
+
+              <div class="mech-panel" id="gearbox-block">
+                <h4>Gearbox Inputs</h4>
+                <div class="field-grid">
+                  <div class="field-row">
+                    <label>Ratio
+                      <input data-key="gb_ratio" type="number" step="0.1" />
+                    </label>
+                  </div>
+                  <div class="field-row">
+                    <label>Efficiency (0–1)
+                      <input data-key="gb_efficiency" type="number" step="0.01" />
+                    </label>
+                  </div>
+                  <div class="field-row">
+                    <label>No-load torque (Nm)
+                      <input data-key="gb_no_load_torque" type="number" step="0.01" />
+                    </label>
+                  </div>
+                  <div class="field-row">
+                    <label>Inertia (kg·m²)
+                      <input data-key="gb_inertia" type="number" step="0.0000001" />
+                    </label>
+                  </div>
+                  <div class="field-row">
+                    <label>Backlash (arcmin)
+                      <input data-key="gb_backlash" type="number" step="0.1" />
+                    </label>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
 
-          <!-- Parallel Kit -->
           <div class="mech-sub">
-            <h3>Parallel Kit</h3>
-            <div class="field-grid">
-              <div class="field-row">
-                <label>Ratio
-                  <input data-key="pk_ratio" type="number" step="0.1" />
-                </label>
+            <h3>Transmission &amp; Load</h3>
+            <p class="mech-caption">Transmission components and external guide/load properties influencing reflected inertia and torque.</p>
+            <div class="mech-stack">
+              <div class="mech-panel" id="parallel-kit-block">
+                <h4>Parallel Kit Inputs</h4>
+                <div class="field-grid">
+                  <div class="field-row">
+                    <label>Ratio
+                      <input data-key="pk_ratio" type="number" step="0.1" />
+                    </label>
+                  </div>
+                  <div class="field-row">
+                    <label>No-load torque (Nm)
+                      <input data-key="pk_no_load_torque" type="number" step="0.01" />
+                    </label>
+                  </div>
+                  <div class="field-row">
+                    <label>Inertia (kg·m²)
+                      <input data-key="pk_inertia" type="number" step="0.0000001" />
+                    </label>
+                  </div>
+                  <div class="field-row">
+                    <label>Max torque (Nm)
+                      <input data-key="pk_max_torque" type="number" step="0.1" />
+                    </label>
+                  </div>
+                  <div class="field-row">
+                    <label>Max speed (rpm)
+                      <input data-key="pk_max_speed" type="number" step="100" />
+                    </label>
+                  </div>
+                </div>
               </div>
-              <div class="field-row">
-                <label>No-load torque (Nm)
-                  <input data-key="pk_no_load_torque" type="number" step="0.01" />
-                </label>
-              </div>
-              <div class="field-row">
-                <label>Inertia (kg·m²)
-                  <input data-key="pk_inertia" type="number" step="0.0000001" />
-                </label>
-              </div>
-              <div class="field-row">
-                <label>Max torque (Nm)
-                  <input data-key="pk_max_torque" type="number" step="0.1" />
-                </label>
-              </div>
-              <div class="field-row">
-                <label>Max speed (rpm)
-                  <input data-key="pk_max_speed" type="number" step="100" />
-                </label>
-              </div>
-            </div>
-          </div>
-        </div>
 
-        <!-- Gearbox + Safety — full width row below -->
-        <div class="mech-cols" style="margin-top:20px;">
-          <div class="mech-sub">
-            <h3>Gearbox</h3>
-            <div class="field-grid">
-              <div class="field-row">
-                <label>Ratio
-                  <input data-key="gb_ratio" type="number" step="0.1" />
-                </label>
+              <div class="mech-panel" id="guide-block">
+                <h4>Guide Inputs</h4>
+                <div class="field-grid">
+                  <div class="field-row">
+                    <label>Displacement force (N)
+                      <input data-key="guide_force" type="number" step="1" />
+                    </label>
+                  </div>
+                  <div class="field-row">
+                    <label>Moving mass (kg)
+                      <input data-key="guide_mass" type="number" step="0.1" />
+                    </label>
+                  </div>
+                  <div class="field-row">
+                    <label>Max withstand force (N)
+                      <input data-key="guide_max_force" type="number" step="1" />
+                    </label>
+                  </div>
+                  <div class="field-row">
+                    <label>Service life @100% load (km)
+                      <input data-key="guide_service_life" type="number" step="1" />
+                    </label>
+                  </div>
+                </div>
               </div>
-              <div class="field-row">
-                <label>Efficiency (0–1)
-                  <input data-key="gb_efficiency" type="number" step="0.01" />
-                </label>
-              </div>
-              <div class="field-row">
-                <label>No-load torque (Nm)
-                  <input data-key="gb_no_load_torque" type="number" step="0.01" />
-                </label>
-              </div>
-              <div class="field-row">
-                <label>Inertia (kg·m²)
-                  <input data-key="gb_inertia" type="number" step="0.0000001" />
-                </label>
-              </div>
-              <div class="field-row">
-                <label>Backlash (arcmin)
-                  <input data-key="gb_backlash" type="number" step="0.1" />
-                </label>
-              </div>
-            </div>
-          </div>
-          <div class="mech-sub">
-            <h3>General</h3>
-            <div class="field-grid">
-              <div class="field-row">
-                <label>Safety factor (%)
-                  <input data-key="safety_factor" type="number" step="1" />
-                </label>
+
+              <div class="mech-panel">
+                <h4>General Inputs</h4>
+                <div class="field-grid">
+                  <div class="field-row">
+                    <label>Safety factor (%)
+                      <input data-key="safety_factor" type="number" step="1" />
+                    </label>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
         <!-- Drive ratio suggestion -->
-        <div class="section-block">
+        <div class="section-block" id="gearbox-suggestion-block">
           <h3 style="font-size:13px;font-weight:700;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em">Drive ratio suggestion</h3>
           <div id="gearbox-best-suggestion" class="suggestion-note">Updates after calculation.</div>
           <div class="table-wrap">
@@ -366,9 +498,6 @@
           <div class="metric-grid">
             <div class="metric-card"><span>Torque Required at Motor shaft</span><strong id="out_tpeak_motor">—</strong></div>
             <div class="metric-card"><span>Speed Required at Motor shaft</span><strong id="out_nmotor">—</strong></div>
-            <div class="metric-card"><span>RMS Torque</span><strong id="out_trms">—</strong></div>
-            <div class="metric-card"><span>Reflected Inertia</span><strong id="out_inertia">—</strong></div>
-            <div class="metric-card"><span>Inertia Ratio</span><strong id="out_inertia_ratio">—</strong></div>
           </div>
         </div>
       </section>
@@ -436,9 +565,9 @@
           <h2 style="margin:0;">Report</h2>
           <button id="download-report-btn" type="button" class="button secondary" style="display:flex;align-items:center;gap:6px;">
             <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Download Report
+            Download PDF Report
           </button>
-          <span style="font-size:13px;color:var(--muted);">Downloads an Excel file with primary results and verification checklist.</span>
+          <span style="font-size:13px;color:var(--muted);">Downloads a PDF with primary results and verification checklist.</span>
         </div>
       </section>
 
@@ -446,6 +575,8 @@
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="projects.js"></script>
   <script src="servo-app.js"></script>
 </body>

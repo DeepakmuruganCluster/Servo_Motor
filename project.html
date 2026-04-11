@@ -66,6 +66,16 @@ header h1{font-size:18px;font-weight:800;letter-spacing:1.5px}
 .section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
 .section-head h3{font-size:15px;font-weight:700;color:var(--titan)}
 
+/* Confidence meter (per application card) */
+.confidence-mini{margin-top:8px}
+.confidence-mini-head{display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--sub);margin-bottom:5px}
+.confidence-mini-head strong{color:var(--text);font-size:12px}
+.confidence-mini-bar{height:7px;border-radius:999px;background:#e5e7eb;overflow:hidden}
+.confidence-mini-fill{height:100%;width:0%;transition:width .25s ease}
+.confidence-mini-fill.high{background:#16a34a}
+.confidence-mini-fill.mid{background:#d97706}
+.confidence-mini-fill.low{background:#dc2626}
+
 /* Application grid */
 .app-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
 .app-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:12px;box-shadow:0 1px 6px rgba(0,0,0,.05);transition:box-shadow .2s,transform .2s}
@@ -247,7 +257,7 @@ function autoSelectMotor(st) {
   let Nmotor = 0, T_peak_motor = 0, I_motor = 0;
 
   steps.forEach(step => {
-    const avail  = Math.max((step.move_time || 1) - (st.dwell_time || 0.1), 0.01);
+    const avail  = Math.max((step.move_time || 1), 0.01);
     const t_acc  = Math.min(avail / 2, avail * ((st.acc_pct || 25) / 100));
     const Vmax   = avail > t_acc ? (step.stroke || 0) / 1000 / (avail - t_acc) : 0;
     const amax   = t_acc > 0 ? Vmax / t_acc : 0;
@@ -369,15 +379,25 @@ function autoSelectMotor(st) {
       if (app.state) {
         const s = app.state;
         const step = (s.steps && s.steps[0]) || {};
+        const hasParallel = Number(s.has_parallel_kit) !== 0;
+        const hasGearbox = Number(s.has_gearbox) !== 0;
         params = [
           step.stroke   ? `Stroke ${step.stroke} mm`        : null,
           step.move_time? `T-move ${step.move_time} s`      : null,
           s.bs_pitch    ? `Pitch ${s.bs_pitch} mm`          : null,
-          s.pk_ratio && s.pk_ratio !== 1 ? `PK ${s.pk_ratio}:1` : null,
-          s.gb_ratio && s.gb_ratio !== 1 ? `GB ${s.gb_ratio}:1` : null,
+          hasParallel && s.pk_ratio && s.pk_ratio !== 1 ? `PK ${s.pk_ratio}:1` : null,
+          hasGearbox && s.gb_ratio && s.gb_ratio !== 1 ? `GB ${s.gb_ratio}:1` : null,
         ].filter(Boolean).join(' · ');
       }
       const mx = app.metrics;
+      const confidence = app.state ? calculateConfidence(app) : null;
+      const confValue = confidence !== null && Number.isFinite(confidence)
+        ? Math.max(0, Math.min(100, confidence))
+        : null;
+      const confBand = confValue === null ? 'low' : (confValue >= 80 ? 'high' : (confValue >= 60 ? 'mid' : 'low'));
+      const confidenceHtml = confValue === null
+        ? `<div class="confidence-mini"><div class="confidence-mini-head"><span>Confidence Score (%)</span><strong>—</strong></div><div class="confidence-mini-bar"><div class="confidence-mini-fill low" style="width:0%"></div></div></div>`
+        : `<div class="confidence-mini"><div class="confidence-mini-head"><span>Confidence Score (%)</span><strong>${confValue}%</strong></div><div class="confidence-mini-bar"><div class="confidence-mini-fill ${confBand}" style="width:${confValue}%"></div></div></div>`;
       const utilHtml = mx
         ? `<div style="font-size:11px;color:var(--sub);margin-top:2px;">
              N:${mx.speedUtil}% &nbsp;T:${mx.torqueUtil}% &nbsp;J:${mx.inertiaUtil}%
@@ -391,6 +411,7 @@ function autoSelectMotor(st) {
           ${statusBadge(app.status)}
         </div>
         ${params ? `<div class="app-params">${escHtml(params)}</div>` : ''}
+        ${confidenceHtml}
         <div>
           ${app.motor
             ? `<div class="app-motor">${escHtml(app.motor)}</div>${utilHtml}`
@@ -451,6 +472,8 @@ function autoSelectMotor(st) {
 
   // Exact header text from Excel User input row 2 → state key mapping
   const USER_INPUT_COL_MAP = {
+    'application':                                    'appl',
+    'application name':                               'appl',
     'stn no':                                         'stn_no',
     'appl':                                           'appl',
     // Operating conditions
@@ -469,6 +492,9 @@ function autoSelectMotor(st) {
     'stroke':                                         'step:stroke',
     'cycle time available for single movement':       'step:move_time',
     'cycle time for movement':                        'step:move_time',
+    'move time':                                      'step:move_time',
+    'move time s':                                    'step:move_time',
+    'move time sec':                                  'step:move_time',
     'external force on the moving mass':              'step:external_force',
     'external force':                                 'step:external_force',
     'moving mass':                                    'step:load_mass',
@@ -488,6 +514,9 @@ function autoSelectMotor(st) {
     'ball screw pitch':                               'bs_pitch',
     'bs pitch':                                       'bs_pitch',
     'pitch':                                          'bs_pitch',
+    'ball screw dia':                                 'bs_dia',
+    'ball screw diameter':                            'bs_dia',
+    'bs dia':                                         'bs_dia',
     'ball screw efficiency':                          'bs_efficiency',
     'bs efficiency':                                  'bs_efficiency',
     'ball screw friction torque':                     'bs_friction_torque',
@@ -499,6 +528,9 @@ function autoSelectMotor(st) {
     'guide displacement force':                       'guide_force',
     'guide force':                                    'guide_force',
     'guide moving mass':                              'guide_mass',
+    'max withstand force':                            'guide_max_force',
+    'service life for 100% loading':                  'guide_service_life',
+    'service life for 100 loading':                   'guide_service_life',
     'friction coefficient':                           'mu',
     'mu':                                             'mu',
     // Parallel kit
@@ -534,11 +566,12 @@ function autoSelectMotor(st) {
   const DEFAULT_STATE = {
     project_shifts:3, project_hours_shift:7, project_days_week:6,
     project_total_cycle:7, project_operating_time:2.6,
-    project_service_life:10, project_accuracy:10, dwell_time:0.1,
+    project_service_life:10, project_accuracy:10, dwell_time:0,
     acc_pct:25, safety_factor:20,
     steps:[{label:'Step 1',stroke:15,move_time:1.0,external_force:250,load_mass:1.0,tilt_deg:45}],
     mu:0.03, guide_force:15, guide_mass:1.6,
-    bs_pitch:2, bs_efficiency:0.98, bs_inertia:1.0704e-5, bs_friction_torque:0.05,
+    guide_max_force:1000, guide_service_life:5000,
+    bs_pitch:2, bs_dia:6, bs_efficiency:0.98, bs_inertia:1.0704e-5, bs_friction_torque:0.05,
     bs_max_speed:12000, bs_max_torque:3, bs_repetition_accuracy:10,
     has_parallel_kit:1, pk_ratio:1, pk_no_load_torque:0.07, pk_inertia:2.67e-5, pk_max_torque:3, pk_max_speed:6000,
     has_gearbox:0, gb_ratio:1, gb_efficiency:0.97, gb_no_load_torque:0.01, gb_inertia:0, gb_backlash:7,
@@ -559,6 +592,22 @@ function autoSelectMotor(st) {
       if (norm.includes(k) || k.includes(norm)) return v;
     }
     return null;
+  }
+
+  function parseNumberCell(raw) {
+    if (typeof raw === 'number') return Number.isFinite(raw) ? raw : NaN;
+    const txt = String(raw ?? '').trim();
+    if (!txt) return NaN;
+    const normalized = txt
+      .replace(/%/g, '')
+      .replace(/\s+/g, '')
+      .replace(',', '.');
+    const direct = Number(normalized);
+    if (Number.isFinite(direct)) return direct;
+    const match = normalized.match(/[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?/);
+    if (!match) return NaN;
+    const parsed = Number(match[0]);
+    return Number.isFinite(parsed) ? parsed : NaN;
   }
 
   function parseProjectExcel(file) {
@@ -620,10 +669,10 @@ function autoSelectMotor(st) {
               motorState[key] = (v === 'yes' || v === '1' || v === 'true') ? 1 : 0;
             } else if (key.startsWith('step:')) {
               const field = key.slice(5);
-              const num = parseFloat(raw);
+              const num = parseNumberCell(raw);
               if (!isNaN(num)) motorState.steps[0][field] = num;
             } else {
-              const num = parseFloat(raw);
+              const num = parseNumberCell(raw);
               if (!isNaN(num)) motorState[key] = num;
             }
           });
@@ -832,8 +881,8 @@ function autoSelectMotor(st) {
         step.stroke || '',
         step.move_time || '',
         s.bs_pitch || '',
-        s.pk_ratio || '',
-        s.gb_ratio || '',
+        Number(s.has_parallel_kit) !== 0 ? (s.pk_ratio || '') : '',
+        Number(s.has_gearbox) !== 0 ? (s.gb_ratio || '') : '',
         (s.steps || []).some(st => Number(st.tilt_deg) !== 0) ? 'Yes' : 'No',
       ]);
     });

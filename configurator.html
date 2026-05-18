@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>System Configurator — TITAN</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --titan:#1F3864;--blue:#1d4ed8;--blue-lt:#dbeafe;
+  --bg:#f3f4f6;--surface:#fff;--border:#e5e7eb;
+  --text:#111827;--sub:#6b7280;
+  --radius:14px;--shadow:0 4px 24px rgba(15,23,42,.08);
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column}
+header{background:var(--titan);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:60px;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.brand{display:flex;align-items:center;gap:14px}
+header h1{font-size:20px;font-weight:800;letter-spacing:2px}
+header .sub{font-size:12px;opacity:.55;margin-left:4px;font-weight:400}
+.header-link{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;transition:background .15s}
+.header-link:hover{background:rgba(255,255,255,.18)}
+main{flex:1;max-width:1160px;margin:0 auto;padding:36px 24px;width:100%}
+.page-intro{margin-bottom:26px}
+.page-intro h2{font-size:20px;font-weight:700;color:var(--titan);margin-bottom:4px}
+.page-intro p{font-size:13px;color:var(--sub);line-height:1.5}
+
+/* Layout */
+.config-grid{display:grid;grid-template-columns:1fr 380px;gap:24px;align-items:start}
+@media(max-width:900px){.config-grid{grid-template-columns:1fr}}
+
+/* Diagram card */
+.diagram-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:28px 28px 20px;box-shadow:var(--shadow)}
+.diagram-card h3{font-size:13px;font-weight:600;color:var(--sub);text-transform:uppercase;letter-spacing:.07em;margin-bottom:18px}
+.diagram-svg{width:100%;height:auto;display:block}
+.svg-layer{transition:opacity .3s ease}
+.svg-layer.hidden{opacity:0;pointer-events:none}
+.legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)}
+.legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--sub)}
+.legend-dot{width:12px;height:12px;border-radius:3px;display:inline-block;flex-shrink:0}
+
+/* Step list */
+.step-list{display:flex;flex-direction:column;gap:12px}
+.step-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow)}
+.step-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--sub);margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.step-num{width:20px;height:20px;background:var(--blue);color:#fff;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0}
+.option-row{display:flex;gap:8px;flex-wrap:wrap}
+.opt{border:2px solid var(--border);background:var(--bg);border-radius:10px;padding:8px 16px;font-size:13px;font-weight:600;color:var(--sub);cursor:pointer;transition:all .15s;line-height:1}
+.opt:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-lt)}
+.opt.active{border-color:var(--blue);background:var(--blue-lt);color:var(--blue)}
+
+/* Actions */
+.action-bar{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:11px 22px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;border:none;transition:background .15s,transform .1s;text-decoration:none}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:var(--blue);color:#fff}
+.btn-primary:hover{background:#1e40af}
+.btn-ghost{background:transparent;color:var(--sub);border:1px solid var(--border)}
+.btn-ghost:hover{background:var(--bg);color:var(--text)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <img src="clustervise-logo-white.svg" alt="ClusterVise" style="height:38px;" onerror="this.style.display='none'"/>
+    <div>
+      <h1>TITAN<span class="sub">Servo Sizing</span></h1>
+    </div>
+  </div>
+  <a class="header-link" href="index.html">← Projects</a>
+</header>
+
+<main>
+  <div class="page-intro">
+    <h2 id="page-title">Configure System Topology</h2>
+    <p>Select your mechanical configuration. The diagram updates live as you make selections.</p>
+  </div>
+
+  <div class="config-grid">
+
+    <!-- ── SVG Diagram ── -->
+    <div class="diagram-card">
+      <h3>System Diagram</h3>
+
+      <svg class="diagram-svg" viewBox="0 0 800 400" xmlns="http://www.w3.org/2000/svg" font-family="system-ui,sans-serif">
+        <defs>
+          <marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+            <polygon points="0 0, 8 4, 0 8" fill="#64748b"/>
+          </marker>
+          <pattern id="hatch" x="0" y="0" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <line x1="0" y1="0" x2="0" y2="8" stroke="#b0bec5" stroke-width="1.5"/>
+          </pattern>
+        </defs>
+
+        <!-- LM GUIDE RAILS -->
+        <g id="layer-lm" class="svg-layer hidden">
+          <rect x="54" y="108" width="410" height="10" rx="2" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.5"/>
+          <rect x="54" y="182" width="410" height="10" rx="2" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.5"/>
+          <text x="56" y="104" font-size="10" fill="#2563eb" font-weight="600">LM Guide</text>
+        </g>
+
+        <!-- BASE -->
+        <g id="layer-base">
+          <!-- left bearing -->
+          <rect x="36" y="128" width="20" height="44" rx="3" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.5"/>
+          <circle cx="46" cy="150" r="9"   fill="#fff" stroke="#94a3b8" stroke-width="1.5"/>
+          <circle cx="46" cy="150" r="3.5" fill="#cbd5e1"/>
+          <!-- right bearing -->
+          <rect x="444" y="128" width="20" height="44" rx="3" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.5"/>
+          <circle cx="454" cy="150" r="9"   fill="#fff" stroke="#94a3b8" stroke-width="1.5"/>
+          <circle cx="454" cy="150" r="3.5" fill="#cbd5e1"/>
+          <!-- ballscrew shaft -->
+          <rect x="56" y="143" width="388" height="14" fill="url(#hatch)"/>
+          <rect x="56" y="143" width="388" height="14" fill="none" stroke="#94a3b8" stroke-width="1"/>
+          <!-- nut -->
+          <rect x="208" y="127" width="64" height="46" rx="4" fill="#d1d5db" stroke="#6b7280" stroke-width="1.5"/>
+          <rect x="216" y="134" width="48" height="32" rx="2" fill="#e5e7eb" stroke="#9ca3af" stroke-width="1"/>
+          <text x="240" y="154" text-anchor="middle" font-size="10" fill="#374151" font-weight="600">μ</text>
+          <text x="246" y="157" font-size="7" fill="#374151">r</text>
+          <!-- connector -->
+          <rect x="232" y="114" width="16" height="16" fill="#9ca3af"/>
+          <!-- payload -->
+          <rect x="180" y="56" width="120" height="56" rx="7" fill="#1d4ed8" stroke="#1e40af" stroke-width="1.5"/>
+          <text x="240" y="84" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">m</text>
+          <text x="250" y="89" font-size="9" fill="rgba(255,255,255,.75)">payload</text>
+          <!-- v,a arrow -->
+          <line x1="182" y1="44" x2="264" y2="44" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+          <text x="178" y="40" font-size="11" fill="#64748b">v, a</text>
+          <!-- F_comp -->
+          <line x1="302" y1="80" x2="346" y2="80" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+          <text x="304" y="74" font-size="10" fill="#64748b">F</text>
+          <text x="312" y="77" font-size="7" fill="#64748b">comp</text>
+          <!-- η_mech -->
+          <text x="240" y="178" text-anchor="middle" font-size="10" fill="#94a3b8">η</text>
+          <text x="247" y="182" font-size="7" fill="#94a3b8">mech</text>
+          <!-- coupling stub from right bearing to component zone -->
+          <rect x="464" y="146" width="56" height="8" fill="#9ca3af" rx="1"/>
+        </g>
+
+        <!-- F_counter (any CB) -->
+        <g id="layer-fcounter" class="svg-layer hidden">
+          <line x1="178" y1="80" x2="130" y2="80" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+          <text x="128" y="74" text-anchor="end" font-size="10" fill="#64748b">F</text>
+          <text x="129" y="77" font-size="7" fill="#64748b">counter</text>
+        </g>
+
+        <!-- CB PULLEY — LEFT side, pulley above left bearing, mass hangs left -->
+        <g id="layer-cb-pulley" class="svg-layer hidden">
+          <circle cx="46" cy="28" r="18" fill="#fff" stroke="#7c3aed" stroke-width="2"/>
+          <circle cx="46" cy="28" r="9"  fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+          <circle cx="46" cy="28" r="3.5" fill="#7c3aed"/>
+          <line x1="196" y1="60" x2="46" y2="28" stroke="#7c3aed" stroke-width="1.5" stroke-dasharray="5,3"/>
+          <line x1="33" y1="44" x2="22" y2="222" stroke="#7c3aed" stroke-width="1.5"/>
+          <rect x="4" y="222" width="40" height="48" rx="4" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+          <text x="24" y="248" text-anchor="middle" font-size="12" fill="#6d28d9" font-weight="700">m</text>
+          <text x="33" y="252" font-size="8" fill="#6d28d9">c</text>
+          <text x="46" y="14" text-anchor="middle" font-size="10" fill="#7c3aed" font-weight="600">CB Pulley</text>
+        </g>
+
+        <!-- CB WITHOUT COUNTERBALANCE — pulley at top + guide shaft (rod + slider + mass guided by rod) -->
+        <g id="layer-cb-shaft" class="svg-layer hidden">
+          <!-- pulley above left bearing (same position as "with CB") -->
+          <circle cx="46" cy="28" r="18" fill="#fff" stroke="#db2777" stroke-width="2"/>
+          <circle cx="46" cy="28" r="9"  fill="#fce7f3" stroke="#db2777" stroke-width="1.5"/>
+          <circle cx="46" cy="28" r="3.5" fill="#db2777"/>
+          <!-- rope: payload top-left → pulley (dashed) -->
+          <line x1="196" y1="60" x2="46" y2="28" stroke="#db2777" stroke-width="1.5" stroke-dasharray="5,3"/>
+          <!-- rope: pulley down to guide rod -->
+          <line x1="33" y1="44" x2="28" y2="58" stroke="#db2777" stroke-width="1.5"/>
+          <!-- vertical guide rod (rod constrains mass motion) -->
+          <rect x="22" y="58" width="12" height="222" rx="3" fill="#fce7f3" stroke="#db2777" stroke-width="1.5"/>
+          <rect x="25" y="58" width="4"  height="222" fill="#fbcfe8" opacity="0.5"/>
+          <!-- slider block riding on rod at payload height -->
+          <rect x="16" y="74" width="24" height="28" rx="3" fill="#fce7f3" stroke="#db2777" stroke-width="1.5"/>
+          <!-- dashed arm connecting slider to payload left side -->
+          <line x1="40" y1="88" x2="180" y2="84" stroke="#db2777" stroke-width="1.5" stroke-dasharray="4,3"/>
+          <!-- guided mass at bottom of rod -->
+          <rect x="8" y="262" width="42" height="44" rx="4" fill="#fce7f3" stroke="#db2777" stroke-width="1.5"/>
+          <text x="29" y="287" text-anchor="middle" font-size="12" fill="#9d174d" font-weight="700">m</text>
+          <text x="38" y="291" font-size="8" fill="#9d174d">c</text>
+          <!-- label -->
+          <text x="46" y="14" text-anchor="middle" font-size="9" fill="#db2777" font-weight="600">Guide Shaft</text>
+        </g>
+
+        <!-- ── INLINE DRIVE TRAIN (no Parallel Kit) ── -->
+
+        <!-- Coupling extension to motor (no PK) -->
+        <g id="layer-coupling-inline" class="svg-layer">
+          <rect x="520" y="146" width="148" height="8" fill="#9ca3af" rx="1"/>
+        </g>
+
+        <!-- Gearbox inline (hasGB && !hasPK) — sits on coupling shaft -->
+        <g id="layer-gb-inline" class="svg-layer hidden">
+          <rect x="520" y="115" width="60" height="70" rx="4" fill="#fefce8" stroke="#ca8a04" stroke-width="1.5"/>
+          <line x1="520" y1="115" x2="580" y2="185" stroke="#ca8a04" stroke-width="1" stroke-dasharray="3,2"/>
+          <line x1="580" y1="115" x2="520" y2="185" stroke="#ca8a04" stroke-width="1" stroke-dasharray="3,2"/>
+          <text x="550" y="155" text-anchor="middle" font-size="10" fill="#92400e" font-weight="700">GB</text>
+          <text x="584" y="152" font-size="9" fill="#b45309">η</text>
+          <text x="591" y="156" font-size="7" fill="#b45309">gear</text>
+        </g>
+
+        <!-- Motor inline (no PK) -->
+        <g id="layer-motor-inline" class="svg-layer">
+          <circle cx="710" cy="150" r="42" fill="#fff" stroke="#374151" stroke-width="2.5"/>
+          <circle cx="710" cy="150" r="32" fill="#f8fafc" stroke="#9ca3af" stroke-width="1"/>
+          <text x="710" y="157" text-anchor="middle" font-size="24" font-weight="800" fill="#1f2937">M</text>
+          <text x="710" y="207" text-anchor="middle" font-size="11" fill="#6b7280">Servo Motor</text>
+          <text x="710" y="221" text-anchor="middle" font-size="10" fill="#9ca3af">J</text>
+          <text x="717" y="225" font-size="7" fill="#9ca3af">mot</text>
+        </g>
+
+        <!-- ── PARALLEL DRIVE TRAIN (Parallel Kit active) ── -->
+
+        <!-- PARALLEL KIT — tall housing; BOTH input (ballscrew shaft) and output (motor shaft)
+             connect on the LEFT face. Motor+GB run horizontally LEFT, parallel to ballscrew axis -->
+        <g id="layer-pk" class="svg-layer hidden">
+          <!-- PK housing box: left face is where both shafts connect -->
+          <rect x="464" y="126" width="76" height="156" rx="5" fill="#f0fdf4" stroke="#16a34a" stroke-width="2" stroke-dasharray="6,3"/>
+          <!-- upper pulley — connected to ballscrew shaft (y=150) -->
+          <circle cx="497" cy="150" r="13" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+          <circle cx="497" cy="150" r="5"  fill="#16a34a"/>
+          <!-- lower pulley — connected to motor shaft (y=258) -->
+          <circle cx="497" cy="258" r="13" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+          <circle cx="497" cy="258" r="5"  fill="#16a34a"/>
+          <!-- timing belt left strand -->
+          <line x1="484" y1="150" x2="484" y2="258" stroke="#16a34a" stroke-width="2"/>
+          <!-- timing belt right strand (dashed, behind) -->
+          <line x1="510" y1="150" x2="510" y2="258" stroke="#16a34a" stroke-width="1.5" stroke-dasharray="4,2"/>
+          <!-- input connection dot: LEFT face at ballscrew shaft height -->
+          <circle cx="464" cy="150" r="5" fill="#16a34a" stroke="#fff" stroke-width="1.5"/>
+          <!-- output connection dot: LEFT face at motor shaft height — SAME SIDE as input -->
+          <circle cx="464" cy="258" r="5" fill="#16a34a" stroke="#fff" stroke-width="1.5"/>
+          <!-- PK label -->
+          <text x="540" y="200" font-size="10" fill="#15803d" font-weight="700">PK</text>
+          <text x="540" y="213" font-size="9" fill="#15803d">η</text>
+          <text x="547" y="217" font-size="7" fill="#15803d">pk</text>
+        </g>
+
+        <!-- Gearbox with PK (hasPK && hasGB) — horizontal box to LEFT of PK at motor shaft level -->
+        <g id="layer-gb-below-pk" class="svg-layer hidden">
+          <!-- white bg first to fully erase the gray shaft behind GB -->
+          <rect x="385" y="228" width="80" height="62" rx="4" fill="#fff"/>
+          <!-- GB box: right face at x=464 (PK left face), runs leftward -->
+          <rect x="386" y="228" width="78" height="62" rx="4" fill="#fefce8" stroke="#ca8a04" stroke-width="2"/>
+          <line x1="386" y1="228" x2="464" y2="290" stroke="#ca8a04" stroke-width="1" stroke-dasharray="3,2"/>
+          <line x1="464" y1="228" x2="386" y2="290" stroke="#ca8a04" stroke-width="1" stroke-dasharray="3,2"/>
+          <text x="425" y="264" text-anchor="middle" font-size="13" fill="#92400e" font-weight="700">GB</text>
+          <text x="425" y="306" text-anchor="middle" font-size="9" fill="#b45309">η</text>
+          <text x="432" y="310" font-size="7" fill="#b45309">gear</text>
+        </g>
+
+        <!-- Motor parallel (hasPK) — horizontal at y=258, to LEFT of PK; shaft parallel to ballscrew -->
+        <g id="layer-motor-parallel" class="svg-layer hidden">
+          <!-- horizontal motor shaft running from motor right edge to PK left face (GB covers it when present) -->
+          <rect x="350" y="254" width="114" height="8" fill="#9ca3af" rx="1"/>
+          <!-- motor circle -->
+          <circle cx="310" cy="258" r="40" fill="#fff" stroke="#374151" stroke-width="2.5"/>
+          <circle cx="310" cy="258" r="30" fill="#f8fafc" stroke="#9ca3af" stroke-width="1"/>
+          <text x="310" y="265" text-anchor="middle" font-size="22" font-weight="800" fill="#1f2937">M</text>
+          <text x="310" y="312" text-anchor="middle" font-size="11" fill="#6b7280">Servo Motor</text>
+          <text x="310" y="326" text-anchor="middle" font-size="10" fill="#9ca3af">J</text>
+          <text x="317" y="330" font-size="7" fill="#9ca3af">mot</text>
+        </g>
+
+      </svg>
+
+      <!-- Legend -->
+      <div class="legend">
+        <div class="legend-item"><span class="legend-dot" style="background:#1d4ed8;"></span>Payload + Ballscrew</div>
+        <div class="legend-item" id="leg-lm" style="display:none"><span class="legend-dot" style="background:#bfdbfe;border:1.5px solid #3b82f6;"></span>LM Guide</div>
+        <div class="legend-item" id="leg-gearbox" style="display:none"><span class="legend-dot" style="background:#fefce8;border:1.5px solid #ca8a04;"></span>Gearbox</div>
+        <div class="legend-item" id="leg-pk" style="display:none"><span class="legend-dot" style="background:#f0fdf4;border:1.5px dashed #16a34a;"></span>Parallel Kit</div>
+        <div class="legend-item" id="leg-cb-p" style="display:none"><span class="legend-dot" style="background:#ede9fe;border:1.5px solid #7c3aed;"></span>Pulley + Counterbalance</div>
+        <div class="legend-item" id="leg-cb-s" style="display:none"><span class="legend-dot" style="background:#fce7f3;border:1.5px solid #db2777;"></span>Pulley + Guide Shaft</div>
+      </div>
+    </div>
+
+    <!-- ── Configuration Steps ── -->
+    <div>
+      <div class="step-list">
+
+        <div class="step-card">
+          <div class="step-label"><span class="step-num">1</span>Ballscrew Type</div>
+          <div class="option-row">
+            <button class="opt" data-cfg="bs_type" data-val="preassembled">Preassembled</button>
+            <button class="opt" data-cfg="bs_type" data-val="custom">Custom Built</button>
+          </div>
+        </div>
+
+        <div class="step-card">
+          <div class="step-label"><span class="step-num">2</span>LM Guide for Ballscrew</div>
+          <div class="option-row">
+            <button class="opt" data-cfg="has_lm_guide" data-val="yes">Yes</button>
+            <button class="opt" data-cfg="has_lm_guide" data-val="no">No</button>
+          </div>
+        </div>
+
+        <div class="step-card">
+          <div class="step-label"><span class="step-num">3</span>Counterbalance</div>
+          <div class="option-row">
+            <button class="opt" data-cfg="counterbalance" data-val="none">None</button>
+            <button class="opt" data-cfg="counterbalance" data-val="pulley">With Counterbalance</button>
+            <button class="opt" data-cfg="counterbalance" data-val="guide_shaft">Without Counterbalance</button>
+          </div>
+        </div>
+
+        <div class="step-card">
+          <div class="step-label"><span class="step-num">4</span>Parallel Kit</div>
+          <div class="option-row">
+            <button class="opt" data-cfg="has_parallel_kit" data-val="yes">Yes</button>
+            <button class="opt" data-cfg="has_parallel_kit" data-val="no">No</button>
+          </div>
+        </div>
+
+        <div class="step-card">
+          <div class="step-label"><span class="step-num">5</span>Gearbox</div>
+          <div class="option-row">
+            <button class="opt" data-cfg="has_gearbox" data-val="yes">Yes</button>
+            <button class="opt" data-cfg="has_gearbox" data-val="no">No</button>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="action-bar">
+        <a href="index.html" class="btn btn-ghost">Back</a>
+        <button class="btn btn-primary" id="save-btn">Save &amp; Open Project →</button>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<script src="projects.js"></script>
+<script>
+(function () {
+  const params = new URLSearchParams(location.search);
+  const projectId = params.get('id');
+  if (!projectId) { location.href = 'index.html'; return; }
+
+  const proj = Projects.get(projectId);
+  if (!proj) { location.href = 'index.html'; return; }
+
+  document.getElementById('page-title').textContent = 'Configure: ' + proj.name;
+
+  // Default config — merge with any saved config on the project
+  const cfg = Object.assign({
+    bs_type:          'custom',
+    has_lm_guide:     false,
+    counterbalance:   'none',
+    has_parallel_kit: false,
+    has_gearbox:      false,
+  }, proj.config || {});
+
+  // Map config values → button data-val strings
+  function cfgToVal(key) {
+    if (key === 'bs_type')          return cfg.bs_type;
+    if (key === 'has_lm_guide')     return cfg.has_lm_guide     ? 'yes' : 'no';
+    if (key === 'counterbalance')   return cfg.counterbalance;
+    if (key === 'has_parallel_kit') return cfg.has_parallel_kit ? 'yes' : 'no';
+    if (key === 'has_gearbox')      return cfg.has_gearbox      ? 'yes' : 'no';
+  }
+
+  function syncButtons() {
+    document.querySelectorAll('.opt').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.val === cfgToVal(btn.dataset.cfg));
+    });
+  }
+
+  function setLayer(id, visible) {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('hidden', !visible);
+  }
+
+  function setLegend(id, visible) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = visible ? 'flex' : 'none';
+  }
+
+  function updateDiagram() {
+    const hasCB = cfg.counterbalance !== 'none';
+    const hasPK = cfg.has_parallel_kit;
+    const hasGB = cfg.has_gearbox;
+
+    setLayer('layer-lm',               cfg.has_lm_guide);
+    setLayer('layer-cb-pulley',        cfg.counterbalance === 'pulley');
+    setLayer('layer-cb-shaft',         cfg.counterbalance === 'guide_shaft');
+    setLayer('layer-fcounter',         hasCB);
+
+    // Inline drivetrain (no PK): motor sits at right end of shaft
+    setLayer('layer-coupling-inline',  !hasPK);
+    setLayer('layer-gb-inline',         hasGB && !hasPK);
+    setLayer('layer-motor-inline',     !hasPK);
+
+    // Parallel drivetrain (PK active): motor drops below shaft
+    setLayer('layer-pk',               hasPK);
+    setLayer('layer-gb-below-pk',      hasPK && hasGB);
+    setLayer('layer-motor-parallel',   hasPK);
+
+    setLegend('leg-lm',     cfg.has_lm_guide);
+    setLegend('leg-gearbox', hasGB);
+    setLegend('leg-pk',      hasPK);
+    setLegend('leg-cb-p',    cfg.counterbalance === 'pulley');
+    setLegend('leg-cb-s',    cfg.counterbalance === 'guide_shaft');
+  }
+
+  // Handle option clicks
+  document.querySelectorAll('.opt').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.cfg;
+      const val = btn.dataset.val;
+      if (key === 'bs_type')          cfg.bs_type          = val;
+      else if (key === 'has_lm_guide')     cfg.has_lm_guide     = val === 'yes';
+      else if (key === 'counterbalance')   cfg.counterbalance   = val;
+      else if (key === 'has_parallel_kit') cfg.has_parallel_kit = val === 'yes';
+      else if (key === 'has_gearbox')      cfg.has_gearbox      = val === 'yes';
+      syncButtons();
+      updateDiagram();
+    });
+  });
+
+  document.getElementById('save-btn').addEventListener('click', () => {
+    Projects.setConfig(projectId, cfg);
+    location.href = 'project.html?id=' + projectId;
+  });
+
+  // Initialise
+  syncButtons();
+  updateDiagram();
+})();
+</script>
+</body>
+</html>

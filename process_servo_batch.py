@@ -68,7 +68,6 @@ def calculate_axis(row_dict):
 
     stroke_m   = g('stroke_mm') / 1000.0
     t_move     = g('move_time_s', 1.0)
-    dwell_time = g('dwell_time_s', 0.1)
     acc_pct    = g('acc_pct', 25)
     if acc_pct <= 1:          # calc sheet stores as decimal fraction (0.25 → 25%)
         acc_pct *= 100
@@ -77,13 +76,17 @@ def calculate_axis(row_dict):
         safety_pct *= 100
     tilt_deg   = g('tilt_deg', 0)
 
-    available_time = max(t_move - dwell_time, 0.01)
-    t_acc   = min(available_time / 2, available_time * (acc_pct / 100))
-    t_dec   = t_acc
+    # `move_time_s` is the active movement window from the sheet, not dwell time.
+    available_time = max(t_move, 0.01)
+    accel_time = g('acceleration_time_s', -1)
+    decel_time = g('deceleration_time_s', -1)
+    t_acc   = accel_time if accel_time > 0 else min(available_time / 2, available_time * (acc_pct / 100))
+    t_dec   = decel_time if decel_time > 0 else t_acc
     t_const = max(0, available_time - t_acc - t_dec)
+    peak_span = max(available_time - 0.5 * (t_acc + t_dec), 0.01)
 
     if t_acc > 0 and available_time > 0:
-        Vmax_m_s = stroke_m / available_time
+        Vmax_m_s = stroke_m / peak_span
     else:
         Vmax_m_s = 0
 
@@ -120,11 +123,12 @@ def calculate_axis(row_dict):
     I_load_bs  = mass * (bs_pitch_m / (2 * math.pi)) ** 2
     I_motor    = (I_load_bs + bs_inertia + pk_inertia) / (eff_ratio ** 2)
 
-    alpha = amax * (2 * math.pi) / bs_pitch_m if bs_pitch_m > 0 else 0
-    T_accel = I_motor * alpha
+    load_inertia_bs = I_load_bs + bs_inertia + pk_inertia
+    T_accel = load_inertia_bs * ((Nscrew / 9.55) * t_acc)
+    T_decel = load_inertia_bs * ((Nscrew / 9.55) * t_dec)
 
     gb_no_load = g('gb_no_load_torque', 0.01)
-    T_peak_bs    = (T_bs_load + T_accel / eff_ratio) * (1 + safety_pct / 100)
+    T_peak_bs    = max(T_bs_load + T_accel, T_bs_load + T_decel) * (1 + safety_pct / 100)
     T_peak_motor = (T_peak_bs / (eff_ratio * eff_efficiency) + gb_no_load) if eff_ratio > 0 else 0
 
     needs_brake = tilt_deg != 0
@@ -143,6 +147,8 @@ def calculate_axis(row_dict):
         'Nmotor (rpm)':    round(Nmotor),
         'T_peak_motor (Nm)': round(T_peak_motor, 3),
         'I_motor (kg·m²)': f'{I_motor:.4e}',
+        'Accel torque (Nm)': round(T_accel, 3),
+        'Decel torque (Nm)': round(T_decel, 3),
         'Needs brake':     'Yes' if needs_brake else 'No',
         'Best motor':      best_pn,
         'Ranked options':  ' | '.join(best_rank) if best_rank else 'NONE',
@@ -179,6 +185,10 @@ def parse_horizontal_sheet(sheet_df):
             col_map.setdefault('stroke_mm', col_idx)
         elif 'cycle time' in h_l or 'move time' in h_l:
             col_map.setdefault('move_time_s', col_idx)
+        elif 'acceleration time' in h_l:
+            col_map.setdefault('acceleration_time_s', col_idx)
+        elif 'deceleration time' in h_l or 'decceleration time' in h_l:
+            col_map.setdefault('deceleration_time_s', col_idx)
         elif 'accel' in h_l or 'acc %' in h_l:
             col_map.setdefault('acc_pct', col_idx)
         elif 'external force' in h_l:
@@ -215,14 +225,21 @@ def parse_vertical_sheet(sheet_df):
     label_map = {
         'movement stroke required':              'stroke_mm',
         'cycle time available for single movement': 'move_time_s',
+        'acceleration time':                     'acceleration_time_s',
+        'deceleration time':                     'deceleration_time_s',
+        'decceleration time':                    'deceleration_time_s',
         'external force on the moving mass':     'external_force_N',
         'moving mass':                           'load_mass_kg',
         'tilt angle of the setup':               'tilt_deg',
         'ball screw pitch':                      'bs_pitch_mm',
-        'acceleration time':                     'acc_pct',
+        'acceleration %':                        'acc_pct',
         'acceleration':                          'acc_pct',
         'accel decel time':                      'acc_pct',
         'safety factor':                         'safety_factor_pct',
+        'ball screw bearing drag torque':        'bs_friction_torque',
+        'ballscrew bearing drag torque':         'bs_friction_torque',
+        'ball screw friction torque':            'bs_friction_torque',
+        'no load driving torque of spindle':     'bs_friction_torque',
         'gear ratio':                            'pk_ratio',
         'selected gear ratio':                   'gb_ratio',
     }

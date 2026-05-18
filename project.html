@@ -144,6 +144,7 @@ footer{text-align:center;font-size:11px;color:var(--sub);padding:16px;border-top
       <div class="project-meta" id="proj-meta"></div>
     </div>
     <div class="project-info-actions">
+      <a class="btn btn-ghost btn-sm" id="configure-btn" href="#">Configure</a>
       <button class="btn btn-ghost btn-sm" id="edit-info-btn">Edit info</button>
     </div>
   </div>
@@ -151,14 +152,14 @@ footer{text-align:center;font-size:11px;color:var(--sub);padding:16px;border-top
   <!-- ── Upload project file ── -->
   <div class="upload-panel">
     <h3>Upload Project File</h3>
-    <p>Upload the project Excel file (<strong>User input</strong> sheet). Row 2 must be the header row; each subsequent row is one application. Required columns: <strong>Stn no, Appl</strong> — plus any of: Total cycle time of machine, Total operating time per cycle, Expected service life of Machine, Movement Stroke required, Cycle time available for single movement, External Force on the moving mass, Moving mass, Tilt angle of the setup, Acceleration %, Safety factor %, Movement accuracy required (+/-), selected servo motor, Parallel Kit (Yes/No), Gearbox (Yes/No).</p>
+    <p>Upload the project Excel file (<strong>User input</strong> sheet). The template has four columns: <strong>Parameter</strong>, <strong>Value</strong>, <strong>Unit</strong>, and <strong>Notes</strong>. Fill in the Value column — direction and yes/no fields include dropdown options. Yellow cells are auto-calculated; do not edit them.</p>
     <div class="upload-row">
       <label class="upload-drop" id="upload-drop">
         <input type="file" id="project-file-input" accept=".xlsx,.xls" />
         <svg width="22" height="22" fill="none" stroke="#9ca3af" stroke-width="1.8" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         <div class="upload-drop-text">
           <strong>Choose file or drag &amp; drop</strong>
-          .xlsx — one row per motor
+          .xlsx — project input template
         </div>
       </label>
       <button class="btn btn-ghost" id="download-template-btn">
@@ -246,6 +247,24 @@ const _MOTOR_DB = [
 ];
 const G = 9.81;
 
+function getStepTimings(step, st = DEFAULT_STATE) {
+  const avail = Math.max(Number(step?.move_time) || 0, 0.01);
+  const accPct = Math.min(80, Math.max(1, Number(st.acc_pct) || 25)) / 100;
+  const fallbackAcc = Math.min(avail / 2, avail * accPct);
+  const rawAcc = Number(step?.acceleration_time);
+  const rawDec = Number(step?.deceleration_time);
+  const t_acc = Number.isFinite(rawAcc) && rawAcc > 0 ? Math.min(rawAcc, avail) : fallbackAcc;
+  const t_dec = Number.isFinite(rawDec) && rawDec > 0 ? Math.min(rawDec, avail) : t_acc;
+  const t_const = Math.max(0, avail - t_acc - t_dec);
+  return { avail, t_acc, t_dec, t_const };
+}
+
+function getPeakLinearSpeed(step, st = DEFAULT_STATE) {
+  const { avail, t_acc, t_dec } = getStepTimings(step, st);
+  const span = avail - 0.5 * (t_acc + t_dec);
+  return span > 0 ? (Number(step?.stroke) || 0) / span : 0;
+}
+
 function autoSelectMotor(st) {
   /* Compact replication of calculateStepGroup + suggestBestMotor from servo-app.js */
   const eff_ratio = (st.pk_ratio || 1) * (st.gb_ratio || 1);
@@ -253,33 +272,57 @@ function autoSelectMotor(st) {
   const pitch_m   = (st.bs_pitch || 5) / 1000;
   const perm_ir   = st.sm_permitted_inertia_ratio || 7;
   const steps     = st.steps || [];
+  const bearingDrag = (() => {
+    const fixed = (st.bs_n_fixed_blocks || 0) * (st.bs_fixed_drag_axial || 0);
+    const support = (st.bs_n_support_blocks || 0) * (st.bs_support_drag_axial || 0);
+    return fixed + support;
+  })();
 
   let Nmotor = 0, T_peak_motor = 0, I_motor = 0;
 
   steps.forEach(step => {
-    const avail  = Math.max((step.move_time || 1), 0.01);
-    const t_acc  = Math.min(avail / 2, avail * ((st.acc_pct || 25) / 100));
-    const Vmax   = avail > t_acc ? (step.stroke || 0) / 1000 / (avail - t_acc) : 0;
-    const amax   = t_acc > 0 ? Vmax / t_acc : 0;
+    const { avail, t_acc, t_dec } = getStepTimings(step, st);
+    const Vmax   = getPeakLinearSpeed(step, st) / 1000;
     const Nsc    = pitch_m > 0 ? Vmax * 1000 / (st.bs_pitch || 5) * 60 : 0;
     const Nm     = Nsc * eff_ratio;
 
-    const theta  = ((step.tilt_deg || 0) * Math.PI) / 180;
-    const mass   = (step.load_mass || 0) + (st.guide_mass || 0);
-    const Fax    = Math.abs((step.external_force || 0)
-                   + mass * G * Math.sin(theta)
-                   + mass * G * Math.cos(theta) * (st.mu || 0.03))
-                   + (st.guide_force || 0);
-    const T_bs_load = pitch_m > 0
-      ? (Fax * pitch_m) / (2 * Math.PI * (st.bs_efficiency || 0.98))
-        + (st.bs_friction_torque || 0) + (st.pk_no_load_torque || 0)
-      : 0;
+    const theta        = ((step.tilt_deg || 0) * Math.PI) / 180;
+    const n_blocks     = st.guide_n_blocks || 1;
+    const mass         = (step.load_mass || 0) + (st.guide_mass || 0)
+                       + (st.bs_nut_mass || 0)
+                       + n_blocks * (st.guide_block_mass || 0);
 
+    const grav_sign    = step.movement_dir === 'with_gravity' ? -1 : 1;
+    const ext_sign     = step.external_force_dir === 'aiding' ? -1 : 1;
+    const F_grav       = grav_sign * mass * G * Math.sin(theta);
+    const F_pl         = mass * G * (st.mu || 0.03) * Math.cos(theta);
+    const F_cb_fr      = (st.cb_n_bushings || 0) * (st.cb_bushing_friction_force || 0);
+    let F_cb           = 0;
+    if (Number(st.has_counterbalance)) {
+      const th_cb = ((st.cb_angle_deg || 90) * Math.PI) / 180;
+      F_cb = -grav_sign * (st.cb_mass || 0) * G * (Math.sin(th_cb) + (st.cb_mu || 0) * Math.cos(th_cb));
+    }
+    const Fax          = ext_sign * (step.external_force || 0)
+                         + F_grav
+                         + F_pl + n_blocks * (st.guide_force || 0) + F_cb_fr
+                         + F_cb;
+    // Signed axial torque per sign matrix — no Math.abs (gravity-aided can be negative)
+    const T_axial      = pitch_m > 0 ? (Fax * pitch_m) / (2 * Math.PI * (st.bs_efficiency || 0.98)) : 0;
+    const T_preload    = st.bs_preload_torque || 0;
+    const T_bs_load    = T_axial + T_preload + (st.bs_bearing_drag_torque || bearingDrag || 0) + (st.pk_no_load_torque || 0);
+
+    // Jrm from geometry
+    const BS_DENS = { steel: 7870, stainless: 7930, aluminum: 2700 };
+    const Jrm_p = (Math.PI / 32) * (BS_DENS[st.bs_material] || 7870) * ((st.bs_length || 500) / 1000) * Math.pow((st.bs_dia || 6) / 1000, 4);
     const J_ref  = (mass * Math.pow(pitch_m / (2 * Math.PI), 2))
-                   + (st.bs_inertia || 0) + (st.pk_inertia || 0) + (st.gb_inertia || 0);
-    const alpha  = pitch_m > 0 ? amax * 2 * Math.PI / pitch_m : 0;
-    const T_acc  = J_ref * alpha;
-    const T_pbs  = (T_bs_load + T_acc) * (1 + (st.safety_factor || 20) / 100);
+                   + Jrm_p + (st.pk_inertia || 0) + (st.gb_inertia || 0);
+    // T = J × N / (9.55 × t)  — divide by time (angular deceleration)
+    const T_acc  = t_acc > 0 ? J_ref * Nsc / (9.55 * t_acc) : 0;
+    const T_dec  = t_dec > 0 ? J_ref * Nsc / (9.55 * t_dec) : 0;
+    const SF_p              = 1 + (st.safety_factor || 20) / 100;
+    const T_total_accel_p   = T_bs_load + T_acc;
+    const T_total_decel_p   = T_bs_load - T_dec;
+    const T_pbs  = Math.max(Math.abs(T_total_accel_p), Math.abs(T_total_decel_p)) * SF_p;
     const T_pm   = eff_ratio > 0 ? T_pbs / (eff_ratio * eff_eff) + (st.gb_no_load_torque || 0) : 0;
     const Im     = eff_ratio > 0 ? J_ref / Math.pow(eff_ratio, 2) : 0;
 
@@ -346,6 +389,9 @@ function autoSelectMotor(st) {
     return `<span class="badge ${map[status]||'badge-warn'}">${escHtml(status)}</span>`;
   }
   function nl(v) { return typeof v==='number' ? v : parseFloat(v); }
+
+  /* ── Configure button ── */
+  document.getElementById('configure-btn').href = 'configurator.html?id=' + projectId;
 
   /* ── Project info ── */
   function renderInfo() {
@@ -466,8 +512,9 @@ function autoSelectMotor(st) {
 
   /* ══════════════════════════════════════════════════
      EXCEL IMPORT — reads 'User input' sheet
-     Layout: Row 2 = headers (horizontal), Rows 3+ = data
-     Col B = Stn no, Col C = Appl, Cols D-N,P = parameters
+     Supports both:
+       1) Horizontal table format (one row per application)
+       2) Transposed template format (Parameter / Value / Unit)
   ══════════════════════════════════════════════════ */
 
   // Exact header text from Excel User input row 2 → state key mapping
@@ -495,11 +542,90 @@ function autoSelectMotor(st) {
     'move time':                                      'step:move_time',
     'move time s':                                    'step:move_time',
     'move time sec':                                  'step:move_time',
+    'acceleration time':                              'step:acceleration_time',
+    'deceleration time':                              'step:deceleration_time',
+    'decceleration time':                             'step:deceleration_time',
     'external force on the moving mass':              'step:external_force',
     'external force':                                 'step:external_force',
-    'moving mass':                                    'step:load_mass',
+    'ext force direction':                            '_text_step:external_force_dir',
+    'external force direction':                       '_text_step:external_force_dir',
+    'direction of external force':                    '_text_step:external_force_dir',
+    'payload movement direction':                     '_text_step:movement_dir',
+    'movement direction':                             '_text_step:movement_dir',
+    // Mass components — summed to step:load_mass during import
+    'payload mass':                                   '_mass:payload',
+    'carriage mass':                                  '_mass:carriage',
+    'bs nut mass':                                    '_mass:nut',
+    'ballscrew nut mass':                             '_mass:nut',
+    'lm guide block mass':                            '_mass:block_mass',
+    'linear guide carriage block mass':               '_mass:block_mass',
+    'no carriage blocks':                             '_mass:n_blocks',
+    'number of carriage blocks':                      '_mass:n_blocks',
+    'number carriage blocks':                         '_mass:n_blocks',
+    'moving mass':                                    'step:load_mass',  // fallback if no breakdown
+    // Inclination & friction
+    'inclination angle':                              'step:tilt_deg',
     'tilt angle of the setup':                        'step:tilt_deg',
     'tilt angle':                                     'step:tilt_deg',
+    'friction coeff lm guide':                        'mu',
+    'friction coefficient of linear guide':           'mu',
+    'friction coefficient':                           'mu',
+    'lm guide friction per block':                    '_friction:lm_per_block',
+    'lm guide friction block':                        '_friction:lm_per_block',
+    'lm guide friction':                              '_friction:lm_per_block',
+    'cb bushing friction per bushing':                '_friction:cb_per_bushing',
+    'cb bushing friction':                            '_friction:cb_per_bushing',
+    'linear bush friction force':                     '_friction:cb_per_bushing',
+    'linear bush friction force (counterbalance)':    '_friction:cb_per_bushing',
+    'no cb bushings':                                 '_friction:n_cb_bushings',
+    'no cb linear bushings':                          '_friction:n_cb_bushings',
+    'number of linear bushings':                      '_friction:n_cb_bushings',
+    'number linear bushings':                         '_friction:n_cb_bushings',
+    'number of linear bushings (counterbalance)':     '_friction:n_cb_bushings',
+    // Counterbalance
+    'counterbalance exists':                          '_yesno:has_counterbalance',
+    'counterbalance present':                         '_yesno:has_counterbalance',
+    'cb mass':                                        'cb_mass',
+    'counterbalance mass':                            'cb_mass',
+    'cb inclination':                                 'cb_angle_deg',
+    'counterbalance inclination':                     'cb_angle_deg',
+    'cb friction coeff':                              'cb_mu',
+    'counterbalance friction coeff':                  'cb_mu',
+    'counterbalance friction coefficient':            'cb_mu',
+    // Ball screw load torque
+    'bs lead':                                        'bs_pitch',
+    'ballscrew lead':                                 'bs_pitch',
+    'preload nut friction coeff':                     '_ignore',
+    'preload nut friction coefficient':               '_ignore',
+    'preload force':                                  '_ignore',
+    'preload force f0':                               '_ignore',
+    'preload torque':                                 'bs_preload_torque',
+    'bs preload torque':                              'bs_preload_torque',
+    'bs nut mass':                                    'bs_nut_mass',
+    'ball screw nut mass':                            'bs_nut_mass',
+    'bs length':                                      'bs_length',
+    'ball screw length':                              'bs_length',
+    'bs material':                                    '_text:bs_material',
+    'ball screw material':                            '_text:bs_material',
+    'guide block mass':                               'guide_block_mass',
+    'guide block mass per block':                     'guide_block_mass',
+    'bs diameter':                                    'bs_dia',
+    'bearing drag torque':                            'bs_bearing_drag_torque',
+    'ball screw bearing drag torque':                 'bs_bearing_drag_torque',
+    'no of fixed side support blocks':                'bs_n_fixed_blocks',
+    'fixed side drag torque per block':               'bs_fixed_drag_axial',
+    'fixed side drag torque per block axial':         'bs_fixed_drag_axial',
+    'fixed side drag torque per block radial':        'bs_fixed_drag_radial',
+    'fixed side support block drag torque':           'bs_fixed_drag_axial',
+    'fixed side support block drag torque per block':  'bs_fixed_drag_axial',
+    'fixed side support block drag torque total':      '_ignore',
+    'no of support side support blocks':              'bs_n_support_blocks',
+    'support side drag torque per block':             'bs_support_drag_axial',
+    'support side drag torque per block axial':       'bs_support_drag_axial',
+    'support side drag torque per block radial':      'bs_support_drag_radial',
+    'support side support block drag torque':          'bs_support_drag_axial',
+    'support side support block drag torque per block':'bs_support_drag_axial',
+    'support side support block drag torque total':    '_ignore',
     'dwell time':                                     'dwell_time',
     'acceleration %':                                 'acc_pct',
     'acceleration':                                   'acc_pct',
@@ -519,14 +645,16 @@ function autoSelectMotor(st) {
     'bs dia':                                         'bs_dia',
     'ball screw efficiency':                          'bs_efficiency',
     'bs efficiency':                                  'bs_efficiency',
-    'ball screw friction torque':                     'bs_friction_torque',
-    'bs friction torque':                             'bs_friction_torque',
-    'friction torque':                                'bs_friction_torque',
+    'ball screw friction torque':                     'bs_bearing_drag_torque',
+    'bs friction torque':                             'bs_bearing_drag_torque',
+    'bs bearing drag torque':                         'bs_bearing_drag_torque',
+    'friction torque':                                'bs_bearing_drag_torque',
     'ball screw inertia':                             'bs_inertia',
     'bs inertia':                                     'bs_inertia',
     // Guide
     'guide displacement force':                       'guide_force',
     'guide force':                                    'guide_force',
+    'friction force':                                 'guide_force',
     'guide moving mass':                              'guide_mass',
     'max withstand force':                            'guide_max_force',
     'service life for 100% loading':                  'guide_service_life',
@@ -566,12 +694,16 @@ function autoSelectMotor(st) {
   const DEFAULT_STATE = {
     project_shifts:3, project_hours_shift:7, project_days_week:6,
     project_total_cycle:7, project_operating_time:2.6,
-    project_service_life:10, project_accuracy:10, dwell_time:0,
+    project_service_life:10, project_accuracy:10, dwell_time:0.1,
     acc_pct:25, safety_factor:20,
-    steps:[{label:'Step 1',stroke:15,move_time:1.0,external_force:250,load_mass:1.0,tilt_deg:45}],
-    mu:0.03, guide_force:15, guide_mass:1.6,
-    guide_max_force:1000, guide_service_life:5000,
-    bs_pitch:2, bs_dia:6, bs_efficiency:0.98, bs_inertia:1.0704e-5, bs_friction_torque:0.05,
+    steps:[{label:'Step 1',stroke:15,move_time:1.0,acceleration_time:null,deceleration_time:null,external_force:250,external_force_dir:'opposing',load_mass:1.0,movement_dir:'against_gravity',tilt_deg:45}],
+    mu:0.03, guide_force:15, guide_mass:1.6, guide_n_blocks:1,
+    guide_block_mass:0.2, guide_max_force:1000, guide_service_life:5000,
+    bs_pitch:2, bs_dia:6, bs_length:500, bs_material:'steel',
+    bs_efficiency:0.98, bs_nut_mass:0.052, bs_preload_torque:0, bs_bearing_drag_torque:0,
+    bs_n_fixed_blocks:1, bs_fixed_drag_axial:0, bs_fixed_drag_radial:0,
+    bs_n_support_blocks:1, bs_support_drag_axial:0, bs_support_drag_radial:0,
+    has_counterbalance:0, cb_mass:0, cb_angle_deg:90, cb_mu:0.005,
     bs_max_speed:12000, bs_max_torque:3, bs_repetition_accuracy:10,
     has_parallel_kit:1, pk_ratio:1, pk_no_load_torque:0.07, pk_inertia:2.67e-5, pk_max_torque:3, pk_max_speed:6000,
     has_gearbox:0, gb_ratio:1, gb_efficiency:0.97, gb_no_load_torque:0.01, gb_inertia:0, gb_backlash:7,
@@ -625,6 +757,148 @@ function autoSelectMotor(st) {
         // Read all rows including blanks so row indices match Excel row numbers
         const allRows = XLSX.utils.sheet_to_json(ws, { header:1, blankrows:true });
 
+        const transposedHeaderIdx = allRows.findIndex(r =>
+          Array.isArray(r) &&
+          normaliseHeader(r[0] || '') === 'parameter' &&
+          normaliseHeader(r[1] || '') === 'value'
+        );
+
+        if (transposedHeaderIdx >= 0) {
+          const motorState = JSON.parse(JSON.stringify(DEFAULT_STATE));
+          const stnState = {
+            stnNo: '',
+            applStr: '',
+            motorName: null,
+            massComp: {},
+            frictionComp: {},
+            sawBearingDragComponents: false,
+            sawBearingDragTotal: false,
+          };
+
+          for (let i = transposedHeaderIdx + 1; i < allRows.length; i++) {
+            const row = allRows[i];
+            if (!Array.isArray(row) || row.every(c => c == null || String(c).trim() === '')) continue;
+            const key = matchUserInputHeader(row[0]);
+            if (!key) continue;
+            const raw = row[1];
+            if (raw == null || String(raw).trim() === '') continue;
+
+            if (key === 'stn_no') {
+              stnState.stnNo = String(raw).trim();
+            } else if (key === 'appl') {
+              stnState.applStr = String(raw).trim();
+            } else if (key === 'motor_name') {
+              stnState.motorName = String(raw).trim();
+            } else if (key === 'has_parallel_kit' || key === 'has_gearbox') {
+              const v = String(raw).trim().toLowerCase();
+              motorState[key] = (v === 'yes' || v === '1' || v === 'true') ? 1 : 0;
+            } else if (key.startsWith('_yesno:')) {
+              const stateKey = key.slice(7);
+              const v = String(raw).trim().toLowerCase();
+              motorState[stateKey] = (v === 'yes' || v === '1' || v === 'true') ? 1 : 0;
+            } else if (key.startsWith('_text_step:')) {
+              const field = key.slice(11);
+              const v = String(raw).trim().toLowerCase();
+              if (field === 'external_force_dir') {
+                motorState.steps[0][field] = v.includes('aid') ? 'aiding' : 'opposing';
+              } else if (field === 'movement_dir') {
+                motorState.steps[0][field] = (v.includes('aid') || v.includes('with')) ? 'with_gravity' : 'against_gravity';
+              }
+            } else if (key.startsWith('_mass:')) {
+              const component = key.slice(6);
+              const num = parseNumberCell(raw);
+              if (!isNaN(num)) stnState.massComp[component] = num;
+            } else if (key.startsWith('_friction:')) {
+              const component = key.slice(10);
+              const num = parseNumberCell(raw);
+              if (!isNaN(num)) stnState.frictionComp[component] = num;
+            } else if ([
+              'bs_n_fixed_blocks',
+              'bs_fixed_drag_axial',
+              'bs_fixed_drag_radial',
+              'bs_n_support_blocks',
+              'bs_support_drag_axial',
+              'bs_support_drag_radial',
+            ].includes(key)) {
+              stnState.sawBearingDragComponents = true;
+              const num = parseNumberCell(raw);
+              if (!isNaN(num)) motorState[key] = num;
+            } else if (key === 'bs_bearing_drag_torque') {
+              stnState.sawBearingDragTotal = true;
+              const num = parseNumberCell(raw);
+              if (!isNaN(num)) motorState[key] = num;
+            } else if (key.startsWith('step:')) {
+              const field = key.slice(5);
+              const num = parseNumberCell(raw);
+              if (!isNaN(num)) motorState.steps[0][field] = num;
+            } else {
+              const num = parseNumberCell(raw);
+              if (!isNaN(num)) motorState[key] = num;
+            }
+          }
+
+          const hasMassComponents = Object.keys(stnState.massComp).length > 0;
+          if (hasMassComponents) {
+            const nBlocks = stnState.massComp.n_blocks || 0;
+            motorState.steps[0].load_mass =
+              (stnState.massComp.payload    || 0) +
+              (stnState.massComp.carriage   || 0) +
+              (stnState.massComp.nut        || 0) +
+              (stnState.massComp.block_mass || 0) * nBlocks;
+            motorState.guide_mass = 0;
+          }
+
+          const hasfrictionComponents = Object.keys(stnState.frictionComp).length > 0;
+          if (hasfrictionComponents) {
+            const nBlocks     = stnState.massComp.n_blocks || 1;
+            const Ffp         = (stnState.frictionComp.lm_per_block   || 0) * nBlocks;
+            const nCbBushings = stnState.frictionComp.n_cb_bushings    || 0;
+            const Ffcb        = motorState.has_counterbalance
+                                ? (stnState.frictionComp.cb_per_bushing || 0) * nCbBushings
+                                : 0;
+            motorState.guide_force = Ffp + Ffcb;
+          }
+
+          const fixedBearingDrag =
+            (motorState.bs_n_fixed_blocks || 0) *
+            (motorState.bs_fixed_drag_axial || 0);
+          const supportBearingDrag =
+            (motorState.bs_n_support_blocks || 0) *
+            (motorState.bs_support_drag_axial || 0);
+          if (stnState.sawBearingDragComponents) {
+            motorState.bs_bearing_drag_torque = fixedBearingDrag + supportBearingDrag;
+          } else if (!stnState.sawBearingDragTotal) {
+            motorState.bs_bearing_drag_torque = motorState.bs_bearing_drag_torque || 0;
+          }
+
+          const appName = [stnState.stnNo, stnState.applStr].filter(Boolean).join(' ') || 'Application 1';
+          motorState.steps[0].label = appName;
+
+          const autoResult = autoSelectMotor(motorState);
+          const motorPN     = stnState.motorName || (autoResult ? autoResult.motor   : null);
+          const motorIdx    = autoResult ? autoResult.motorIdx : -1;
+          const motorStatus = autoResult ? autoResult.status   : 'NEW';
+          const motorMeta   = autoResult ? autoResult.metrics  : null;
+
+          const existing = Projects.get(projectId)?.servos.find(s => s.name === appName);
+          if (existing) {
+            Projects.updateServo(projectId, existing.id, {
+              state: motorState, motor: motorPN, motorIdx,
+              status: motorStatus, metrics: motorMeta,
+            });
+            showStatus('Imported 1 application (updated).', false);
+          } else {
+            const sid = Projects.addServo(projectId, appName);
+            Projects.updateServo(projectId, sid, {
+              state: motorState, motor: motorPN, motorIdx,
+              status: motorStatus, metrics: motorMeta,
+            });
+            showStatus('Imported 1 application (new).', false);
+          }
+          renderApps();
+          return;
+        }
+
         // Find header row: the row where col B (index 1) = 'Stn no' (case-insensitive)
         // Fallback: first row with 3+ non-empty cells
         let headerIdx = allRows.findIndex(r =>
@@ -652,6 +926,11 @@ function autoSelectMotor(st) {
           let stnNo   = '';
           let applStr = '';
           let motorName = null;
+          // Accumulators for compound fields
+          const massComp     = {};   // _mass:*  keys
+          const frictionComp = {};   // _friction:* keys
+          let sawBearingDragComponents = false;
+          let sawBearingDragTotal = false;
 
           colKeys.forEach((key, col) => {
             if (!key || col >= row.length) return;
@@ -667,6 +946,50 @@ function autoSelectMotor(st) {
             } else if (key === 'has_parallel_kit' || key === 'has_gearbox') {
               const v = String(raw).trim().toLowerCase();
               motorState[key] = (v === 'yes' || v === '1' || v === 'true') ? 1 : 0;
+            } else if (key.startsWith('_yesno:')) {
+              const stateKey = key.slice(7);
+              const v = String(raw).trim().toLowerCase();
+              motorState[stateKey] = (v === 'yes' || v === '1' || v === 'true') ? 1 : 0;
+            } else if (key.startsWith('_text:')) {
+              const stateKey = key.slice(6);
+              const v = String(raw).trim().toLowerCase();
+              if (stateKey === 'bs_material') {
+                motorState.bs_material = v.includes('stainless') || v.includes('ss') ? 'stainless' : v.includes('alum') || v.includes('al') ? 'aluminum' : 'steel';
+              } else {
+                motorState[stateKey] = String(raw).trim();
+              }
+            } else if (key.startsWith('_text_step:')) {
+              const field = key.slice(11);
+              const v = String(raw).trim().toLowerCase();
+              if (field === 'external_force_dir') {
+                motorState.steps[0][field] = v.includes('aid') ? 'aiding' : 'opposing';
+              } else if (field === 'movement_dir') {
+                motorState.steps[0][field] = (v.includes('aid') || v.includes('with')) ? 'with_gravity' : 'against_gravity';
+              }
+            } else if (key.startsWith('_mass:')) {
+              const component = key.slice(6);
+              const num = parseNumberCell(raw);
+              if (!isNaN(num)) stnState.massComp[component] = num;
+              if (!isNaN(num)) massComp[component] = num;
+            } else if (key.startsWith('_friction:')) {
+              const component = key.slice(10);
+              const num = parseNumberCell(raw);
+              if (!isNaN(num)) frictionComp[component] = num;
+            } else if ([
+              'bs_n_fixed_blocks',
+              'bs_fixed_drag_axial',
+              'bs_fixed_drag_radial',
+              'bs_n_support_blocks',
+              'bs_support_drag_axial',
+              'bs_support_drag_radial',
+            ].includes(key)) {
+              sawBearingDragComponents = true;
+              const num = parseNumberCell(raw);
+              if (!isNaN(num)) motorState[key] = num;
+            } else if (key === 'bs_bearing_drag_torque') {
+              sawBearingDragTotal = true;
+              const num = parseNumberCell(raw);
+              if (!isNaN(num)) motorState[key] = num;
             } else if (key.startsWith('step:')) {
               const field = key.slice(5);
               const num = parseNumberCell(raw);
@@ -676,6 +999,42 @@ function autoSelectMotor(st) {
               if (!isNaN(num)) motorState[key] = num;
             }
           });
+
+          // Resolve mass components → steps[0].load_mass
+          const hasMassComponents = Object.keys(massComp).length > 0;
+          if (hasMassComponents) {
+            const nBlocks = massComp.n_blocks || 0;
+            motorState.steps[0].load_mass =
+              (massComp.payload    || 0) +
+              (massComp.carriage   || 0) +
+              (massComp.nut        || 0) +
+              (massComp.block_mass || 0) * nBlocks;
+            motorState.guide_mass = 0; // included in load_mass above
+          }
+
+          // Resolve friction components → guide_force
+          const hasfrictionComponents = Object.keys(frictionComp).length > 0;
+          if (hasfrictionComponents) {
+            const nBlocks     = massComp.n_blocks || 1;
+            const Ffp         = (frictionComp.lm_per_block   || 0) * nBlocks;
+            const nCbBushings = frictionComp.n_cb_bushings    || 0;
+            const Ffcb        = motorState.has_counterbalance
+                                ? (frictionComp.cb_per_bushing || 0) * nCbBushings
+                                : 0;
+            motorState.guide_force = Ffp + Ffcb;
+          }
+
+          const fixedBearingDrag =
+            (motorState.bs_n_fixed_blocks || 0) *
+            (motorState.bs_fixed_drag_axial || 0);
+          const supportBearingDrag =
+            (motorState.bs_n_support_blocks || 0) *
+            (motorState.bs_support_drag_axial || 0);
+          if (sawBearingDragComponents) {
+            motorState.bs_bearing_drag_torque = fixedBearingDrag + supportBearingDrag;
+          } else if (!sawBearingDragTotal) {
+            motorState.bs_bearing_drag_torque = motorState.bs_bearing_drag_torque || 0;
+          }
 
           // Application name = Stn no + ' ' + Appl  (e.g. "OP10 App-1")
           const appName = [stnNo, applStr].filter(Boolean).join(' ');
@@ -730,27 +1089,132 @@ function autoSelectMotor(st) {
   /* ── Template download ── */
   function downloadTemplate() {
     if (!window.XLSX) return;
-    const headers = [
-      'Application','Stroke (mm)','Move time (s)','Accel %','Ext. force (N)',
-      'Moving mass (kg)','Tilt (°)','BS pitch (mm)','BS efficiency',
-      'BS friction (Nm)','BS inertia (kg·m²)','Guide force (N)','Guide mass (kg)',
-      'PK ratio','PK no-load (Nm)','PK inertia (kg·m²)','PK max torque (Nm)','PK max speed (rpm)',
-      'GB ratio','GB efficiency','GB no-load (Nm)','GB inertia (kg·m²)','Backlash (arcmin)',
-      'Safety factor (%)','Cycle time (s)','Op. time (s)',
-      'Shifts/day','Hours/shift','Days/week','Service life (yrs)','Accuracy (µm)',
-      'Parallel Kit needed','Gearbox needed',
+    // Each entry: [Parameter, Value, Unit, Note]
+    const rows = [
+      // Identity
+      ['Stn no',                                    'OP10',            '', 'Station identifier'],
+      ['Appl',                                      'App-1',           '', 'Application name'],
+      // Motion
+      ['Stroke (mm)',                               50,                '', 'Linear travel distance'],
+      ['Move time (s)',                             1.0,               '', 'Total move time (accel + const + decel)'],
+      ['Dwell time (s)',                            0.1,               '', 'Wait time at end of stroke'],
+      ['Acceleration time (s)',                     0.2,               '', 'Accel phase duration (leave blank to use Acc% from app)'],
+      ['Deceleration time (s)',                     0.2,               '', 'Decel phase duration (leave blank to use Dec% from app)'],
+      // Axial force
+      ['External force (N)',                        100,               '', 'Process or payload force on the axis'],
+      ['Ext. force direction',                      'opposing',        '', 'Options: opposing / aiding'],
+      ['Payload movement direction',                'against gravity', '', 'Options: against gravity / with gravity'],
+      // Mass
+      ['Payload mass (kg)',                         3.0,               '', 'Mass of payload being moved'],
+      ['Carriage mass (kg)',                        0.5,               '', 'LM guide carriage / saddle mass'],
+      ['No. carriage blocks',                       2,                 '', 'Number of LM guide carriage blocks'],
+      // Inclination & friction
+      ['Inclination angle (°)',                     45,                '', '0 = horizontal, 90 = vertical'],
+      ['Friction coeff LM guide (μ)',               0.005,             '', 'Friction coefficient of LM guide'],
+      ['Friction Force (N)',                        3.0,               '', 'Friction force per carriage block (N)'],
+      ['Linear bush friction force (counterbalance)', 3.0,            '', 'Friction force per counterbalance bushing (N)'],
+      ['number of linear bushings (counterbalance)', 4,               '', 'No. of counterbalance linear bushings'],
+      // Counterbalance
+      ['Counterbalance exists',                     'no',              '', 'Options: yes / no'],
+      ['CB mass (kg)',                              0,                 '', 'Counterbalance mass'],
+      ['CB inclination (°)',                        90,                '', 'Counterbalance inclination angle'],
+      ['CB friction coeff (μ)',                     0.005,             '', 'Counterbalance guide friction coefficient'],
+      // Ball screw
+      ['BS lead (mm)',                              5,                 '', 'Ball screw lead / pitch'],
+      ['BS efficiency',                             0.95,              '', 'Ball screw mechanical efficiency (0–1)'],
+      ['Preload nut friction coeff (μ0)',           0.2,               '', 'Preload nut friction coefficient'],
+      ['Preload force F0 (N)',                      0,                 '', 'Ball screw preload force'],
+      ['No. of fixed side support blocks',          1,                 '', 'No. of fixed-end bearing support blocks'],
+      ['Fixed side drag torque per block (Nm)',     0,                 '', 'Drag torque per fixed-side block (from catalog)'],
+      ['Fixed side support block drag torque (Nm)', 0,                '', 'Auto-calculated: No. blocks × drag/block'],
+      ['No. of support side support blocks',        1,                 '', 'No. of floating-end bearing support blocks'],
+      ['Support side drag torque per block (Nm)',   0,                 '', 'Drag torque per support-side block (from catalog)'],
+      ['Support side support block drag torque (Nm)', 0,              '', 'Auto-calculated: No. blocks × drag/block'],
+      ['Bearing drag torque (Nm)',                  0,                 '', 'Auto-calculated: fixed total + support total'],
+      ['BS inertia (kg·m²)',                       1.07e-5,           '', 'Ball screw moment of inertia (from catalog)'],
+      ['Guide mass (kg)',                           0,                 '', 'LM guide carriage mass (from catalog)'],
+      // Drive train
+      ['PK ratio',                                  1,                 '', 'Parallel kit gear ratio'],
+      ['PK no-load (Nm)',                           0.07,              '', 'Parallel kit no-load running torque'],
+      ['PK inertia (kg·m²)',                       2.67e-5,           '', 'Parallel kit moment of inertia'],
+      ['PK max torque (Nm)',                        3,                 '', 'Parallel kit max transferable torque'],
+      ['PK max speed (rpm)',                        6000,              '', 'Parallel kit max input speed'],
+      ['GB ratio',                                  3,                 '', 'Gearbox ratio'],
+      ['GB efficiency',                             0.95,              '', 'Gearbox mechanical efficiency (0–1)'],
+      ['GB no-load (Nm)',                           0.07,              '', 'Gearbox no-load running torque'],
+      ['GB inertia (kg·m²)',                       0,                 '', 'Gearbox reflected inertia'],
+      ['Backlash (arcmin)',                         0,                 '', 'Gearbox backlash'],
+      // Project
+      ['Safety factor (%)',                         20,                '', 'Design safety factor (%)'],
+      ['Cycle time (s)',                            7,                 '', 'Total machine cycle time'],
+      ['Op. time (s)',                              2.6,               '', 'Servo operating time per cycle'],
+      ['Shifts/day',                                3,                 '', 'Number of shifts per day'],
+      ['Hours/shift',                               7,                 '', 'Working hours per shift'],
+      ['Days/week',                                 6,                 '', 'Working days per week'],
+      ['Service life (yrs)',                        10,                '', 'Required machine service life'],
+      ['Accuracy (µm)',                             20,                '', 'Required positioning accuracy'],
+      ['Parallel Kit needed',                       'Yes',             '', 'Options: Yes / No'],
+      ['Gearbox needed',                            'No',              '', 'Options: Yes / No'],
     ];
-    const example = [
-      'OP10', 50, 1.0, 25, 100, 5, 0,
-      5, 0.98, 0.05, 1.07e-5, 15, 1.6,
-      1, 0.07, 2.67e-5, 3, 6000,
-      3, 0.95, 0.07, 0, 0,
-      20, 7, 2.6, 3, 7, 6, 10, 10,
-      'Yes', 'No',
+
+    const HELPER_LABELS = new Set([
+      'Fixed side support block drag torque (Nm)',
+      'Support side support block drag torque (Nm)',
+      'Bearing drag torque (Nm)',
+    ]);
+
+    const templateRows = [
+      ['Project Input Template', null, null, null],
+      [],
+      ['Parameter', 'Value', 'Unit', 'Notes'],
+      ...rows,
     ];
-    const ws = XLSX.utils.aoa_to_sheet([headers, example]);
-    const wb = { SheetNames:['Motors'], Sheets:{ Motors:ws } };
-    const buf = XLSX.write(wb, { bookType:'xlsx', type:'array' });
+    const ws = XLSX.utils.aoa_to_sheet(templateRows);
+
+    const titleStyle  = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 14 }, fill: { patternType: 'solid', fgColor: { rgb: '1F3864' } }, alignment: { horizontal: 'center' } };
+    const headerStyle = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { patternType: 'solid', fgColor: { rgb: '4472C4' } } };
+    const inputStyle  = { fill: { patternType: 'solid', fgColor: { rgb: 'E2F0D9' } }, border: { top: { style: 'thin', color: { rgb: 'A9D18E' } }, bottom: { style: 'thin', color: { rgb: 'A9D18E' } }, left: { style: 'thin', color: { rgb: 'A9D18E' } }, right: { style: 'thin', color: { rgb: 'A9D18E' } } } };
+    const helperStyle = { fill: { patternType: 'solid', fgColor: { rgb: 'FFF2CC' } }, font: { italic: true } };
+    const noteStyle   = { font: { italic: true, color: { rgb: '595959' } }, fill: { patternType: 'solid', fgColor: { rgb: 'F2F2F2' } } };
+
+    ['A1','B1','C1','D1'].forEach(c => { if (ws[c]) ws[c].s = titleStyle; });
+    ['A3','B3','C3','D3'].forEach(c => { if (ws[c]) ws[c].s = headerStyle; });
+    rows.forEach((row, i) => {
+      const r = i + 4;
+      const isHelper = HELPER_LABELS.has(row[0]);
+      if (ws[`B${r}`]) ws[`B${r}`].s = isHelper ? helperStyle : inputStyle;
+      if (ws[`D${r}`]) ws[`D${r}`].s = noteStyle;
+    });
+
+    // Excel formulas for auto-calculated bearing drag cells
+    const findRow = label => { const idx = rows.findIndex(r => r[0] === label); return idx >= 0 ? idx + 4 : null; };
+    const rFixedN   = findRow('No. of fixed side support blocks');
+    const rFixedB   = findRow('Fixed side drag torque per block (Nm)');
+    const rFixedT   = findRow('Fixed side support block drag torque (Nm)');
+    const rSupportN = findRow('No. of support side support blocks');
+    const rSupportB = findRow('Support side drag torque per block (Nm)');
+    const rSupportT = findRow('Support side support block drag torque (Nm)');
+    const rBearing  = findRow('Bearing drag torque (Nm)');
+    if (rFixedT && rFixedN && rFixedB)       ws[`B${rFixedT}`]   = { t:'n', f:`B${rFixedN}*B${rFixedB}`,   v:0, s:helperStyle };
+    if (rSupportT && rSupportN && rSupportB) ws[`B${rSupportT}`] = { t:'n', f:`B${rSupportN}*B${rSupportB}`,v:0, s:helperStyle };
+    if (rBearing && rFixedT && rSupportT)    ws[`B${rBearing}`]  = { t:'n', f:`B${rFixedT}+B${rSupportT}`, v:0, s:helperStyle };
+
+    const viewRowByHeader = new Map(rows.map((row, i) => [row[0], i + 4]));
+    ws['!dataValidation'] = [
+      { type:'list', sqref:`B${viewRowByHeader.get('Ext. force direction')}`,        formula1:'"opposing,aiding"' },
+      { type:'list', sqref:`B${viewRowByHeader.get('Payload movement direction')}`,  formula1:'"against gravity,with gravity"' },
+      { type:'list', sqref:`B${viewRowByHeader.get('Counterbalance exists')}`,       formula1:'"yes,no"' },
+      { type:'list', sqref:`B${viewRowByHeader.get('Parallel Kit needed')}`,         formula1:'"Yes,No"' },
+      { type:'list', sqref:`B${viewRowByHeader.get('Gearbox needed')}`,              formula1:'"Yes,No"' },
+    ].filter(v => v.sqref !== 'Bundefined');
+
+    ws['!cols'] = [{ wch: 46 }, { wch: 18 }, { wch: 8 }, { wch: 48 }];
+
+    const wb = {
+      SheetNames:['User input'],
+      Sheets:{ 'User input': ws },
+    };
+    const buf = XLSX.write(wb, { bookType:'xlsx', type:'array', cellStyles:true });
     const url = URL.createObjectURL(new Blob([buf], { type:'application/octet-stream' }));
     const a = document.createElement('a');
     a.href = url; a.download = 'titan-project-template.xlsx';

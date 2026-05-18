@@ -115,6 +115,16 @@
       saveStore(store);
     },
 
+    /** Save the system topology configuration for a project. */
+    setConfig(id, config) {
+      const store = getStore();
+      const proj = store.projects[id];
+      if (!proj) return;
+      proj.config = { ...config };
+      proj.lastUpdated = now();
+      saveStore(store);
+    },
+
     /** Remove a servo axis from a project. */
     deleteServo(projectId, servoId) {
       const store = getStore();
@@ -229,7 +239,7 @@ function calculateConfidence(input) {
     entry(hasNumber(state.project_operating_time)),
     entry(hasNumber(state.acc_pct)),
     entry(hasNumber(state.safety_factor)),
-    entry(hasNumber(state.bs_friction_torque)),
+    entry(hasNumber(state.bs_preload_mu) || hasNumber(state.bs_fixed_drag_axial) || hasNumber(state.bs_support_drag_axial)),
   ];
 
   const additional = [

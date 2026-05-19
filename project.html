@@ -1105,59 +1105,84 @@ function autoSelectMotor(st) {
   /* ── Template download ── */
   function downloadTemplate() {
     if (!window.XLSX) return;
-    // Layout: A=Parameter (units in name), B=Notes, C=Station 1, D=Station 2, …
+
+    // Read topology from configurator — fall back to "show all" if not yet configured
+    const projCfg = Projects.get(projectId)?.config || null;
+    const showLM  = !projCfg || projCfg.has_lm_guide;
+    const showCB  = !projCfg || (projCfg.counterbalance && projCfg.counterbalance !== 'none');
+    const showPK  = !projCfg || projCfg.has_parallel_kit;
+    const showGB  = !projCfg || projCfg.has_gearbox;
+
+    // Layout: A=Parameter (units in name), B=Notes, C=Station 1, D=Station 2
     const rows = [
-      ['Stn no',                                      'Station identifier',                              'OP10',           'OP20'],
-      ['Appl',                                        'Application name',                                'App-1',          'App-2'],
-      ['Stroke (mm)',                                  'Linear travel distance',                          50,               50],
-      ['Move time (s)',                                'Total move time (accel + const + decel)',          1.0,              1.0],
-      ['Dwell time (s)',                               'Wait time at end of stroke',                      0.1,              0.1],
-      ['Acceleration time (s)',                        'Accel phase duration (leave blank to use Acc%)',  0.2,              0.2],
-      ['Deceleration time (s)',                        'Decel phase duration (leave blank to use Dec%)',  0.2,              0.2],
-      ['External force (N)',                           'Process or payload force on the axis',            100,              100],
-      ['Ext. force direction',                         'Options: opposing / aiding',                      'opposing',       'opposing'],
-      ['Payload movement direction',                   'Options: against gravity / with gravity',         'against gravity','against gravity'],
-      ['Payload mass (kg)',                            'Mass of payload being moved',                     3.0,              3.0],
-      ['Carriage mass (kg)',                           'LM guide carriage / saddle mass',                 0.5,              0.5],
-      ['No. carriage blocks',                          'Number of LM guide carriage blocks',              2,                2],
-      ['Inclination angle (°)',                        '0 = horizontal, 90 = vertical',                   45,               45],
-      ['Friction coeff LM guide (μ)',                  'Friction coefficient of LM guide',                0.005,            0.005],
-      ['Friction Force (N)',                           'Friction force per carriage block (N)',            3.0,              3.0],
-      ['Linear bush friction force (counterbalance)',  'Friction force per counterbalance bushing (N)',   3.0,              3.0],
-      ['number of linear bushings (counterbalance)',   'No. of counterbalance linear bushings',           4,                4],
-      ['Counterbalance exists',                        'Options: yes / no',                               'no',             'no'],
-      ['CB mass (kg)',                                 'Counterbalance mass',                             0,                0],
-      ['CB inclination (°)',                           'Counterbalance inclination angle',                 90,               90],
-      ['CB friction coeff (μ)',                        'Counterbalance guide friction coefficient',        0.005,            0.005],
-      ['BS lead (mm)',                                 'Ball screw lead / pitch',                          5,                5],
-      ['BS efficiency',                                'Ball screw mechanical efficiency (0–1)',           0.95,             0.95],
-      ['No. of fixed side support blocks',             'No. of fixed-end bearing support blocks',         1,                1],
-      ['Fixed side drag torque per block (Nm)',        'Drag torque per fixed-side block (from catalog)', 0,                0],
-      ['Fixed side support block drag torque (Nm)',    'Auto-calculated: No. blocks × drag/block',        0,                0],
-      ['No. of support side support blocks',           'No. of floating-end bearing support blocks',      1,                1],
-      ['Support side drag torque per block (Nm)',      'Drag torque per support-side block (from catalog)',0,               0],
-      ['Support side support block drag torque (Nm)',  'Auto-calculated: No. blocks × drag/block',        0,                0],
-      ['Bearing drag torque (Nm)',                     'Auto-calculated: fixed total + support total',    0,                0],
-      ['PK ratio',                                     'Parallel kit gear ratio',                         1,                1],
-      ['PK no-load (Nm)',                              'Parallel kit no-load running torque',             0.07,             0.07],
-      ['PK inertia (kg·m²)',                          'Parallel kit moment of inertia',                  2.67e-5,          2.67e-5],
-      ['PK max torque (Nm)',                           'Parallel kit max transferable torque',             3,                3],
-      ['PK max speed (rpm)',                           'Parallel kit max input speed',                    6000,             6000],
-      ['GB ratio',                                     'Gearbox ratio',                                   3,                3],
-      ['GB efficiency',                                'Gearbox mechanical efficiency (0–1)',              0.95,             0.95],
-      ['GB no-load (Nm)',                              'Gearbox no-load running torque',                  0.07,             0.07],
-      ['GB inertia (kg·m²)',                          'Gearbox reflected inertia',                       0,                0],
-      ['Backlash (arcmin)',                            'Gearbox backlash',                                0,                0],
-      ['Safety factor (%)',                            'Design safety factor (%)',                         20,               20],
-      ['Cycle time (s)',                               'Total machine cycle time',                         7,                7],
-      ['Op. time (s)',                                 'Servo operating time per cycle',                   2.6,              2.6],
-      ['Shifts/day',                                   'Number of shifts per day',                         3,                3],
-      ['Hours/shift',                                  'Working hours per shift',                          7,                7],
-      ['Days/week',                                    'Working days per week',                            6,                6],
-      ['Service life (yrs)',                           'Required machine service life',                    10,               10],
-      ['Accuracy (µm)',                                'Required positioning accuracy',                    20,               20],
-      ['Parallel Kit needed',                          'Options: Yes / No',                               'Yes',            'Yes'],
-      ['Gearbox needed',                               'Options: Yes / No',                               'No',             'No'],
+      // ── Identity ──────────────────────────────────────────────────────────
+      ['Stn no',                                    'Station identifier',                              'OP10',           'OP20'],
+      ['Appl',                                      'Application name',                                'App-1',          'App-2'],
+      // ── Motion ────────────────────────────────────────────────────────────
+      ['Stroke (mm)',                               'Linear travel distance',                          50,               50],
+      ['Move time (s)',                             'Total move time (accel + const + decel)',          1.0,              1.0],
+      ['Dwell time (s)',                            'Wait time at end of stroke',                      0.1,              0.1],
+      ['Acceleration time (s)',                     'Accel phase duration (leave blank to use Acc%)',  0.2,              0.2],
+      ['Deceleration time (s)',                     'Decel phase duration (leave blank to use Dec%)',  0.2,              0.2],
+      ['External force (N)',                        'Process or payload force on the axis',            100,              100],
+      ['Ext. force direction',                      'Options: opposing / aiding',                      'opposing',       'opposing'],
+      ['Payload movement direction',                'Options: against gravity / with gravity',         'against gravity','against gravity'],
+      // ── Mass ──────────────────────────────────────────────────────────────
+      ['Payload mass (kg)',                         'Mass of payload being moved',                     3.0,              3.0],
+      ['Carriage mass (kg)',                        'LM guide carriage / saddle mass',                 0.5,              0.5],
+      ['No. carriage blocks',                       'Number of LM guide carriage blocks',              2,                2],
+      ['Inclination angle (°)',                     '0 = horizontal, 90 = vertical',                   45,               45],
+      // ── LM Guide (shown when has_lm_guide) ───────────────────────────────
+      ...(showLM ? [
+        ['Friction coeff LM guide (μ)',             'Friction coefficient of LM guide',                0.005,            0.005],
+        ['Friction Force (N)',                      'Friction force per carriage block (N)',            3.0,              3.0],
+      ] : []),
+      // ── Counterbalance (shown when counterbalance ≠ none) ─────────────────
+      ...(showCB ? [
+        ['Linear bush friction force (counterbalance)', 'Friction force per counterbalance bushing (N)', 3.0,           3.0],
+        ['number of linear bushings (counterbalance)',  'No. of counterbalance linear bushings',          4,             4],
+        ['Counterbalance exists',                   'Options: yes / no',                               'yes',           'yes'],
+        ['CB mass (kg)',                            'Counterbalance mass',                             0,               0],
+        ['CB inclination (°)',                      'Counterbalance inclination angle',                 90,              90],
+        ['CB friction coeff (μ)',                   'Counterbalance guide friction coefficient',        0.005,           0.005],
+      ] : []),
+      // ── Ball Screw ────────────────────────────────────────────────────────
+      ['BS lead (mm)',                              'Ball screw lead / pitch',                          5,                5],
+      ['BS efficiency',                             'Ball screw mechanical efficiency (0–1)',           0.95,             0.95],
+      ['No. of fixed side support blocks',          'No. of fixed-end bearing support blocks',         1,                1],
+      ['Fixed side drag torque per block (Nm)',     'Drag torque per fixed-side block (from catalog)', 0,                0],
+      ['Fixed side support block drag torque (Nm)', 'Auto-calculated: No. blocks × drag/block',       0,                0],
+      ['No. of support side support blocks',        'No. of floating-end bearing support blocks',      1,                1],
+      ['Support side drag torque per block (Nm)',   'Drag torque per support-side block (from catalog)',0,               0],
+      ['Support side support block drag torque (Nm)','Auto-calculated: No. blocks × drag/block',      0,                0],
+      ['Bearing drag torque (Nm)',                  'Auto-calculated: fixed total + support total',    0,                0],
+      // ── Parallel Kit (shown when has_parallel_kit) ────────────────────────
+      ...(showPK ? [
+        ['Parallel Kit needed',                     'Options: Yes / No',                               'Yes',            'Yes'],
+        ['PK ratio',                                'Parallel kit gear ratio',                         1,                1],
+        ['PK no-load (Nm)',                         'Parallel kit no-load running torque',             0.07,             0.07],
+        ['PK inertia (kg·m²)',                     'Parallel kit moment of inertia',                  2.67e-5,          2.67e-5],
+        ['PK max torque (Nm)',                      'Parallel kit max transferable torque',             3,                3],
+        ['PK max speed (rpm)',                      'Parallel kit max input speed',                    6000,             6000],
+      ] : []),
+      // ── Gearbox (shown when has_gearbox) ──────────────────────────────────
+      ...(showGB ? [
+        ['Gearbox needed',                          'Options: Yes / No',                               'Yes',            'Yes'],
+        ['GB ratio',                                'Gearbox ratio',                                   3,                3],
+        ['GB efficiency',                           'Gearbox mechanical efficiency (0–1)',              0.95,             0.95],
+        ['GB no-load (Nm)',                         'Gearbox no-load running torque',                  0.07,             0.07],
+        ['GB inertia (kg·m²)',                     'Gearbox reflected inertia',                       0,                0],
+        ['Backlash (arcmin)',                       'Gearbox backlash',                                0,                0],
+      ] : []),
+      // ── Project / Operating Conditions ────────────────────────────────────
+      ['Safety factor (%)',                         'Design safety factor (%)',                         20,               20],
+      ['Cycle time (s)',                            'Total machine cycle time',                         7,                7],
+      ['Op. time (s)',                              'Servo operating time per cycle',                   2.6,              2.6],
+      ['Shifts/day',                               'Number of shifts per day',                         3,                3],
+      ['Hours/shift',                              'Working hours per shift',                          7,                7],
+      ['Days/week',                                'Working days per week',                            6,                6],
+      ['Service life (yrs)',                       'Required machine service life',                    10,               10],
+      ['Accuracy (µm)',                            'Required positioning accuracy',                    20,               20],
     ];
 
     const HELPER_LABELS = new Set([

@@ -1105,72 +1105,59 @@ function autoSelectMotor(st) {
   /* ── Template download ── */
   function downloadTemplate() {
     if (!window.XLSX) return;
-    // Each entry: [Parameter, Value, Unit, Note]
+    // Layout: A=Parameter (units in name), B=Notes, C=Station 1, D=Station 2, …
     const rows = [
-      // Identity
-      ['Stn no',                                    'OP10',            '', 'Station identifier'],
-      ['Appl',                                      'App-1',           '', 'Application name'],
-      // Motion
-      ['Stroke (mm)',                               50,                '', 'Linear travel distance'],
-      ['Move time (s)',                             1.0,               '', 'Total move time (accel + const + decel)'],
-      ['Dwell time (s)',                            0.1,               '', 'Wait time at end of stroke'],
-      ['Acceleration time (s)',                     0.2,               '', 'Accel phase duration (leave blank to use Acc% from app)'],
-      ['Deceleration time (s)',                     0.2,               '', 'Decel phase duration (leave blank to use Dec% from app)'],
-      // Axial force
-      ['External force (N)',                        100,               '', 'Process or payload force on the axis'],
-      ['Ext. force direction',                      'opposing',        '', 'Options: opposing / aiding'],
-      ['Payload movement direction',                'against gravity', '', 'Options: against gravity / with gravity'],
-      // Mass
-      ['Payload mass (kg)',                         3.0,               '', 'Mass of payload being moved'],
-      ['Carriage mass (kg)',                        0.5,               '', 'LM guide carriage / saddle mass'],
-      ['No. carriage blocks',                       2,                 '', 'Number of LM guide carriage blocks'],
-      // Inclination & friction
-      ['Inclination angle (°)',                     45,                '', '0 = horizontal, 90 = vertical'],
-      ['Friction coeff LM guide (μ)',               0.005,             '', 'Friction coefficient of LM guide'],
-      ['Friction Force (N)',                        3.0,               '', 'Friction force per carriage block (N)'],
-      ['Linear bush friction force (counterbalance)', 3.0,            '', 'Friction force per counterbalance bushing (N)'],
-      ['number of linear bushings (counterbalance)', 4,               '', 'No. of counterbalance linear bushings'],
-      // Counterbalance
-      ['Counterbalance exists',                     'no',              '', 'Options: yes / no'],
-      ['CB mass (kg)',                              0,                 '', 'Counterbalance mass'],
-      ['CB inclination (°)',                        90,                '', 'Counterbalance inclination angle'],
-      ['CB friction coeff (μ)',                     0.005,             '', 'Counterbalance guide friction coefficient'],
-      // Ball screw
-      ['BS lead (mm)',                              5,                 '', 'Ball screw lead / pitch'],
-      ['BS efficiency',                             0.95,              '', 'Ball screw mechanical efficiency (0–1)'],
-      ['Preload nut friction coeff (μ0)',           0.2,               '', 'Preload nut friction coefficient'],
-      ['Preload force F0 (N)',                      0,                 '', 'Ball screw preload force'],
-      ['No. of fixed side support blocks',          1,                 '', 'No. of fixed-end bearing support blocks'],
-      ['Fixed side drag torque per block (Nm)',     0,                 '', 'Drag torque per fixed-side block (from catalog)'],
-      ['Fixed side support block drag torque (Nm)', 0,                '', 'Auto-calculated: No. blocks × drag/block'],
-      ['No. of support side support blocks',        1,                 '', 'No. of floating-end bearing support blocks'],
-      ['Support side drag torque per block (Nm)',   0,                 '', 'Drag torque per support-side block (from catalog)'],
-      ['Support side support block drag torque (Nm)', 0,              '', 'Auto-calculated: No. blocks × drag/block'],
-      ['Bearing drag torque (Nm)',                  0,                 '', 'Auto-calculated: fixed total + support total'],
-      ['BS inertia (kg·m²)',                       1.07e-5,           '', 'Ball screw moment of inertia (from catalog)'],
-      ['Guide mass (kg)',                           0,                 '', 'LM guide carriage mass (from catalog)'],
-      // Drive train
-      ['PK ratio',                                  1,                 '', 'Parallel kit gear ratio'],
-      ['PK no-load (Nm)',                           0.07,              '', 'Parallel kit no-load running torque'],
-      ['PK inertia (kg·m²)',                       2.67e-5,           '', 'Parallel kit moment of inertia'],
-      ['PK max torque (Nm)',                        3,                 '', 'Parallel kit max transferable torque'],
-      ['PK max speed (rpm)',                        6000,              '', 'Parallel kit max input speed'],
-      ['GB ratio',                                  3,                 '', 'Gearbox ratio'],
-      ['GB efficiency',                             0.95,              '', 'Gearbox mechanical efficiency (0–1)'],
-      ['GB no-load (Nm)',                           0.07,              '', 'Gearbox no-load running torque'],
-      ['GB inertia (kg·m²)',                       0,                 '', 'Gearbox reflected inertia'],
-      ['Backlash (arcmin)',                         0,                 '', 'Gearbox backlash'],
-      // Project
-      ['Safety factor (%)',                         20,                '', 'Design safety factor (%)'],
-      ['Cycle time (s)',                            7,                 '', 'Total machine cycle time'],
-      ['Op. time (s)',                              2.6,               '', 'Servo operating time per cycle'],
-      ['Shifts/day',                                3,                 '', 'Number of shifts per day'],
-      ['Hours/shift',                               7,                 '', 'Working hours per shift'],
-      ['Days/week',                                 6,                 '', 'Working days per week'],
-      ['Service life (yrs)',                        10,                '', 'Required machine service life'],
-      ['Accuracy (µm)',                             20,                '', 'Required positioning accuracy'],
-      ['Parallel Kit needed',                       'Yes',             '', 'Options: Yes / No'],
-      ['Gearbox needed',                            'No',              '', 'Options: Yes / No'],
+      ['Stn no',                                      'Station identifier',                              'OP10',           'OP20'],
+      ['Appl',                                        'Application name',                                'App-1',          'App-2'],
+      ['Stroke (mm)',                                  'Linear travel distance',                          50,               50],
+      ['Move time (s)',                                'Total move time (accel + const + decel)',          1.0,              1.0],
+      ['Dwell time (s)',                               'Wait time at end of stroke',                      0.1,              0.1],
+      ['Acceleration time (s)',                        'Accel phase duration (leave blank to use Acc%)',  0.2,              0.2],
+      ['Deceleration time (s)',                        'Decel phase duration (leave blank to use Dec%)',  0.2,              0.2],
+      ['External force (N)',                           'Process or payload force on the axis',            100,              100],
+      ['Ext. force direction',                         'Options: opposing / aiding',                      'opposing',       'opposing'],
+      ['Payload movement direction',                   'Options: against gravity / with gravity',         'against gravity','against gravity'],
+      ['Payload mass (kg)',                            'Mass of payload being moved',                     3.0,              3.0],
+      ['Carriage mass (kg)',                           'LM guide carriage / saddle mass',                 0.5,              0.5],
+      ['No. carriage blocks',                          'Number of LM guide carriage blocks',              2,                2],
+      ['Inclination angle (°)',                        '0 = horizontal, 90 = vertical',                   45,               45],
+      ['Friction coeff LM guide (μ)',                  'Friction coefficient of LM guide',                0.005,            0.005],
+      ['Friction Force (N)',                           'Friction force per carriage block (N)',            3.0,              3.0],
+      ['Linear bush friction force (counterbalance)',  'Friction force per counterbalance bushing (N)',   3.0,              3.0],
+      ['number of linear bushings (counterbalance)',   'No. of counterbalance linear bushings',           4,                4],
+      ['Counterbalance exists',                        'Options: yes / no',                               'no',             'no'],
+      ['CB mass (kg)',                                 'Counterbalance mass',                             0,                0],
+      ['CB inclination (°)',                           'Counterbalance inclination angle',                 90,               90],
+      ['CB friction coeff (μ)',                        'Counterbalance guide friction coefficient',        0.005,            0.005],
+      ['BS lead (mm)',                                 'Ball screw lead / pitch',                          5,                5],
+      ['BS efficiency',                                'Ball screw mechanical efficiency (0–1)',           0.95,             0.95],
+      ['No. of fixed side support blocks',             'No. of fixed-end bearing support blocks',         1,                1],
+      ['Fixed side drag torque per block (Nm)',        'Drag torque per fixed-side block (from catalog)', 0,                0],
+      ['Fixed side support block drag torque (Nm)',    'Auto-calculated: No. blocks × drag/block',        0,                0],
+      ['No. of support side support blocks',           'No. of floating-end bearing support blocks',      1,                1],
+      ['Support side drag torque per block (Nm)',      'Drag torque per support-side block (from catalog)',0,               0],
+      ['Support side support block drag torque (Nm)',  'Auto-calculated: No. blocks × drag/block',        0,                0],
+      ['Bearing drag torque (Nm)',                     'Auto-calculated: fixed total + support total',    0,                0],
+      ['PK ratio',                                     'Parallel kit gear ratio',                         1,                1],
+      ['PK no-load (Nm)',                              'Parallel kit no-load running torque',             0.07,             0.07],
+      ['PK inertia (kg·m²)',                          'Parallel kit moment of inertia',                  2.67e-5,          2.67e-5],
+      ['PK max torque (Nm)',                           'Parallel kit max transferable torque',             3,                3],
+      ['PK max speed (rpm)',                           'Parallel kit max input speed',                    6000,             6000],
+      ['GB ratio',                                     'Gearbox ratio',                                   3,                3],
+      ['GB efficiency',                                'Gearbox mechanical efficiency (0–1)',              0.95,             0.95],
+      ['GB no-load (Nm)',                              'Gearbox no-load running torque',                  0.07,             0.07],
+      ['GB inertia (kg·m²)',                          'Gearbox reflected inertia',                       0,                0],
+      ['Backlash (arcmin)',                            'Gearbox backlash',                                0,                0],
+      ['Safety factor (%)',                            'Design safety factor (%)',                         20,               20],
+      ['Cycle time (s)',                               'Total machine cycle time',                         7,                7],
+      ['Op. time (s)',                                 'Servo operating time per cycle',                   2.6,              2.6],
+      ['Shifts/day',                                   'Number of shifts per day',                         3,                3],
+      ['Hours/shift',                                  'Working hours per shift',                          7,                7],
+      ['Days/week',                                    'Working days per week',                            6,                6],
+      ['Service life (yrs)',                           'Required machine service life',                    10,               10],
+      ['Accuracy (µm)',                                'Required positioning accuracy',                    20,               20],
+      ['Parallel Kit needed',                          'Options: Yes / No',                               'Yes',            'Yes'],
+      ['Gearbox needed',                               'Options: Yes / No',                               'No',             'No'],
     ];
 
     const HELPER_LABELS = new Set([
@@ -1182,7 +1169,7 @@ function autoSelectMotor(st) {
     const templateRows = [
       ['Project Input Template', null, null, null],
       [],
-      ['Parameter', 'Value', 'Unit', 'Notes'],
+      ['Parameter', 'Notes', 'OP10 / App-1', 'OP20 / App-2'],
       ...rows,
     ];
     const ws = XLSX.utils.aoa_to_sheet(templateRows);
@@ -1198,11 +1185,12 @@ function autoSelectMotor(st) {
     rows.forEach((row, i) => {
       const r = i + 4;
       const isHelper = HELPER_LABELS.has(row[0]);
-      if (ws[`B${r}`]) ws[`B${r}`].s = isHelper ? helperStyle : inputStyle;
-      if (ws[`D${r}`]) ws[`D${r}`].s = noteStyle;
+      if (ws[`B${r}`]) ws[`B${r}`].s = noteStyle;
+      if (ws[`C${r}`]) ws[`C${r}`].s = isHelper ? helperStyle : inputStyle;
+      if (ws[`D${r}`]) ws[`D${r}`].s = isHelper ? helperStyle : inputStyle;
     });
 
-    // Excel formulas for auto-calculated bearing drag cells
+    // Excel formulas for auto-calculated bearing drag cells (both station columns)
     const findRow = label => { const idx = rows.findIndex(r => r[0] === label); return idx >= 0 ? idx + 4 : null; };
     const rFixedN   = findRow('No. of fixed side support blocks');
     const rFixedB   = findRow('Fixed side drag torque per block (Nm)');
@@ -1211,25 +1199,24 @@ function autoSelectMotor(st) {
     const rSupportB = findRow('Support side drag torque per block (Nm)');
     const rSupportT = findRow('Support side support block drag torque (Nm)');
     const rBearing  = findRow('Bearing drag torque (Nm)');
-    if (rFixedT && rFixedN && rFixedB)       ws[`B${rFixedT}`]   = { t:'n', f:`B${rFixedN}*B${rFixedB}`,   v:0, s:helperStyle };
-    if (rSupportT && rSupportN && rSupportB) ws[`B${rSupportT}`] = { t:'n', f:`B${rSupportN}*B${rSupportB}`,v:0, s:helperStyle };
-    if (rBearing && rFixedT && rSupportT)    ws[`B${rBearing}`]  = { t:'n', f:`B${rFixedT}+B${rSupportT}`, v:0, s:helperStyle };
+    ['C','D'].forEach(col => {
+      if (rFixedT && rFixedN && rFixedB)       ws[`${col}${rFixedT}`]   = { t:'n', f:`${col}${rFixedN}*${col}${rFixedB}`,   v:0, s:helperStyle };
+      if (rSupportT && rSupportN && rSupportB) ws[`${col}${rSupportT}`] = { t:'n', f:`${col}${rSupportN}*${col}${rSupportB}`,v:0, s:helperStyle };
+      if (rBearing && rFixedT && rSupportT)    ws[`${col}${rBearing}`]  = { t:'n', f:`${col}${rFixedT}+${col}${rSupportT}`, v:0, s:helperStyle };
+    });
 
     const viewRowByHeader = new Map(rows.map((row, i) => [row[0], i + 4]));
     ws['!dataValidation'] = [
-      { type:'list', sqref:`B${viewRowByHeader.get('Ext. force direction')}`,        formula1:'"opposing,aiding"' },
-      { type:'list', sqref:`B${viewRowByHeader.get('Payload movement direction')}`,  formula1:'"against gravity,with gravity"' },
-      { type:'list', sqref:`B${viewRowByHeader.get('Counterbalance exists')}`,       formula1:'"yes,no"' },
-      { type:'list', sqref:`B${viewRowByHeader.get('Parallel Kit needed')}`,         formula1:'"Yes,No"' },
-      { type:'list', sqref:`B${viewRowByHeader.get('Gearbox needed')}`,              formula1:'"Yes,No"' },
-    ].filter(v => v.sqref !== 'Bundefined');
+      { type:'list', sqref:`C${viewRowByHeader.get('Ext. force direction')}`,        formula1:'"opposing,aiding"' },
+      { type:'list', sqref:`C${viewRowByHeader.get('Payload movement direction')}`,  formula1:'"against gravity,with gravity"' },
+      { type:'list', sqref:`C${viewRowByHeader.get('Counterbalance exists')}`,       formula1:'"yes,no"' },
+      { type:'list', sqref:`C${viewRowByHeader.get('Parallel Kit needed')}`,         formula1:'"Yes,No"' },
+      { type:'list', sqref:`C${viewRowByHeader.get('Gearbox needed')}`,              formula1:'"Yes,No"' },
+    ].filter(v => v.sqref && !v.sqref.includes('undefined'));
 
-    ws['!cols'] = [{ wch: 46 }, { wch: 18 }, { wch: 8 }, { wch: 48 }];
+    ws['!cols'] = [{ wch: 46 }, { wch: 48 }, { wch: 18 }, { wch: 18 }];
 
-    const wb = {
-      SheetNames:['User input'],
-      Sheets:{ 'User input': ws },
-    };
+    const wb = { SheetNames:['User input'], Sheets:{ 'User input': ws } };
     const buf = XLSX.write(wb, { bookType:'xlsx', type:'array', cellStyles:true });
     const url = URL.createObjectURL(new Blob([buf], { type:'application/octet-stream' }));
     const a = document.createElement('a');

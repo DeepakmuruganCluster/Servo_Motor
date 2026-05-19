@@ -186,73 +186,77 @@ function downloadExcelTemplate() {
   const step = (Array.isArray(state.steps) && state.steps[0]) ? state.steps[0] : DEFAULT_STATE.steps[0];
   const bearingDrag = getBearingDragComponents();
 
-  // Simple vertical layout: Row 1=title, Row 2=empty, Row 3=header, Rows 4+=Parameter|Value|Unit|Notes
-  // col A=Parameter, col B=Value (editable), col C=Unit, col D=Notes (grey, read-only hint)
+  // Layout: A=Parameter (with units), B=Notes, C=Station 1 values, D=Station 2, …
+  // col A=Parameter, col B=Notes (grey hint), col C+=Value per station (green, editable)
+  const rows_ = [
+    // [parameter, notes, station1_value]
+    ['Stn no',                                    'Station identifier',                              'OP10'],
+    ['Appl',                                      'Application name',                                'App-1'],
+    ['Stroke (mm)',                                'Linear travel distance',                          step.stroke ?? 0],
+    ['Move time (s)',                              'Total move time (accel + const + decel)',          step.move_time ?? 0],
+    ['Dwell time (s)',                             'Wait time at end of stroke',                      state.dwell_time ?? 0.1],
+    ['Acceleration time (s)',                      'Accel phase duration (leave blank to use Acc%)',  step.acceleration_time ?? ''],
+    ['Deceleration time (s)',                      'Decel phase duration (leave blank to use Dec%)',  step.deceleration_time ?? ''],
+    ['External force (N)',                         'Process / payload force on the axis',             step.external_force ?? 0],
+    ['Ext. force direction',                       'Options: opposing / aiding',                      step.external_force_dir || 'opposing'],
+    ['Payload movement direction',                 'Options: against gravity / with gravity',         step.movement_dir || 'against gravity'],
+    ['Payload mass (kg)',                          'Mass of payload being moved',                     step.load_mass ?? 0],
+    ['Carriage mass (kg)',                         'LM guide carriage / saddle mass',                 state.guide_mass ?? 0],
+    ['Guide block mass per block (kg)',            'Mass of each LM guide carriage block',            state.guide_block_mass ?? 0.2],
+    ['No. carriage blocks',                        'Number of LM guide carriage blocks',              state.guide_n_blocks ?? 1],
+    ['Inclination angle (°)',                      '0 = horizontal, 90 = vertical',                   step.tilt_deg ?? 0],
+    ['Friction coeff LM guide (μ)',                'Friction coefficient of LM guide',                state.mu ?? 0],
+    ['Friction Force (N)',                         'Friction force per carriage block (N)',            state.guide_force ?? 0],
+    ['Linear bush friction force (counterbalance)', 'Friction force per counterbalance bushing (N)',  state.cb_bushing_friction_force ?? 0],
+    ['number of linear bushings (counterbalance)', 'No. of counterbalance linear bushings',           state.cb_n_bushings ?? 0],
+    ['Counterbalance exists',                      'Options: yes / no',                               Number(state.has_counterbalance) ? 'yes' : 'no'],
+    ['CB mass (kg)',                               'Counterbalance mass',                             state.cb_mass ?? 0],
+    ['CB inclination (°)',                         'Counterbalance inclination angle',                 state.cb_angle_deg ?? 90],
+    ['CB friction coeff (μ)',                      'Counterbalance guide friction coefficient',        state.cb_mu ?? 0],
+    ['BS lead (mm)',                               'Ball screw lead / pitch',                          state.bs_pitch ?? 2],
+    ['BS diameter (mm)',                           'Ball screw shaft diameter',                        state.bs_dia ?? 6],
+    ['BS length (mm)',                             'Ball screw shaft length',                          state.bs_length ?? 500],
+    ['BS material',                               'Options: steel / stainless / aluminum',            state.bs_material ?? 'steel'],
+    ['BS efficiency',                              'Ball screw mechanical efficiency (0–1)',           state.bs_efficiency ?? 0.98],
+    ['BS nut mass (kg)',                           'Ball screw nut mass (from catalog)',               state.bs_nut_mass ?? 0.052],
+    ['BS preload torque (Nm)',                     'Preload torque (direct input, from catalog)',      state.bs_preload_torque ?? 0],
+    ['No. of fixed side support blocks',           'No. of fixed-end bearing support blocks',         state.bs_n_fixed_blocks ?? 1],
+    ['Fixed side drag torque per block (Nm)',      'Drag torque per fixed-side block (from catalog)', state.bs_fixed_drag_axial ?? 0],
+    ['Fixed side support block drag torque (Nm)',  'Auto-calculated: No. blocks × drag/block',        bearingDrag.fixed],
+    ['No. of support side support blocks',         'No. of floating-end bearing support blocks',      state.bs_n_support_blocks ?? 1],
+    ['Support side drag torque per block (Nm)',    'Drag torque per support-side block (from catalog)', state.bs_support_drag_axial ?? 0],
+    ['Support side support block drag torque (Nm)', 'Auto-calculated: No. blocks × drag/block',      bearingDrag.support],
+    ['Bearing drag torque (Nm)',                   'Auto-calculated: fixed total + support total',    bearingDrag.total],
+    ['PK ratio',                                   'Parallel kit gear ratio',                         state.pk_ratio ?? 1],
+    ['PK no-load (Nm)',                            'Parallel kit no-load running torque',             state.pk_no_load_torque ?? 0],
+    ['PK inertia (kg·m²)',                        'Parallel kit moment of inertia',                  state.pk_inertia ?? 0],
+    ['PK max torque (Nm)',                         'Parallel kit max transferable torque',             state.pk_max_torque ?? 0],
+    ['PK max speed (rpm)',                         'Parallel kit max input speed',                    state.pk_max_speed ?? 0],
+    ['GB ratio',                                   'Gearbox ratio',                                   state.gb_ratio ?? 1],
+    ['GB efficiency',                              'Gearbox mechanical efficiency (0–1)',              state.gb_efficiency ?? 0],
+    ['GB no-load (Nm)',                            'Gearbox no-load running torque',                  state.gb_no_load_torque ?? 0],
+    ['GB inertia (kg·m²)',                        'Gearbox reflected inertia',                       state.gb_inertia ?? 0],
+    ['Backlash (arcmin)',                          'Gearbox backlash',                                state.gb_backlash ?? 0],
+    ['Safety factor (%)',                          'Design safety factor (%)',                         state.safety_factor ?? 20],
+    ['Cycle time (s)',                             'Total machine cycle time',                         state.project_total_cycle ?? 7],
+    ['Op. time (s)',                               'Servo operating time per cycle',                   state.project_operating_time ?? 2.6],
+    ['Shifts/day',                                 'Number of shifts per day',                         state.project_shifts ?? 3],
+    ['Hours/shift',                                'Working hours per shift',                          state.project_hours_shift ?? 7],
+    ['Days/week',                                  'Working days per week',                            state.project_days_week ?? 6],
+    ['Service life (yrs)',                         'Required machine service life',                    state.project_service_life ?? 10],
+    ['Accuracy (µm)',                              'Required positioning accuracy',                    state.project_accuracy ?? 20],
+    ['Parallel Kit needed',                        'Options: Yes / No',                               state.pk_ratio > 1 ? 'Yes' : 'No'],
+    ['Gearbox needed',                             'Options: Yes / No',                               state.gb_ratio > 1 ? 'Yes' : 'No'],
+  ];
   const data = [
-    ['Project Input Template', null, null, null],
+    ['Project Input Template', null, null],
     [],
-    ['Parameter', 'Value', 'Unit', 'Notes'],
-    ['Stn no',                                    'OP10',                                             '',    'Station identifier'],
-    ['Appl',                                      'App-1',                                            '',    'Application name'],
-    ['Stroke (mm)',                                step.stroke ?? 0,                                  '',    'Linear travel distance'],
-    ['Move time (s)',                              step.move_time ?? 0,                               '',    'Total move time (accel + const + decel)'],
-    ['Dwell time (s)',                             state.dwell_time ?? 0.1,                           '',    'Wait time at end of stroke'],
-    ['Acceleration time (s)',                      step.acceleration_time ?? '',                       '',    'Accel phase duration (leave blank to use Acc% from app)'],
-    ['Deceleration time (s)',                      step.deceleration_time ?? '',                      '',    'Decel phase duration (leave blank to use Dec% from app)'],
-    ['External force (N)',                         step.external_force ?? 0,                          '',    'Process / payload force on the axis'],
-    ['Ext. force direction',                       step.external_force_dir || 'opposing',             '',    'Options: opposing / aiding'],
-    ['Payload movement direction',                 step.movement_dir || 'against gravity',            '',    'Options: against gravity / with gravity'],
-    ['Payload mass (kg)',                          step.load_mass ?? 0,                              '',    'Mass of payload being moved'],
-    ['Carriage mass (kg)',                         state.guide_mass ?? 0,                            '',    'LM guide carriage / saddle mass'],
-    ['Guide block mass per block (kg)',            state.guide_block_mass ?? 0.2,                    '',    'Mass of each LM guide carriage block (kg)'],
-    ['No. carriage blocks',                        state.guide_n_blocks ?? 1,                        '',    'Number of LM guide carriage blocks'],
-    ['Inclination angle (°)',                      step.tilt_deg ?? 0,                               '',    '0 = horizontal, 90 = vertical'],
-    ['Friction coeff LM guide (μ)',                state.mu ?? 0,                                    '',    'Friction coefficient of LM guide'],
-    ['Friction Force (N)',                         state.guide_force ?? 0,                           '',    'Friction force per carriage block (N)'],
-    ['Linear bush friction force (counterbalance)', state.cb_bushing_friction_force ?? 0,            '',    'Friction force per counterbalance bushing (N)'],
-    ['number of linear bushings (counterbalance)', state.cb_n_bushings ?? 0,                        '',    'No. of counterbalance linear bushings'],
-    ['Counterbalance exists',                      Number(state.has_counterbalance) ? 'yes' : 'no', '',    'Options: yes / no'],
-    ['CB mass (kg)',                               state.cb_mass ?? 0,                               '',    'Counterbalance mass'],
-    ['CB inclination (°)',                         state.cb_angle_deg ?? 90,                         '',    'Counterbalance inclination angle'],
-    ['CB friction coeff (μ)',                      state.cb_mu ?? 0,                                 '',    'Counterbalance guide friction coefficient'],
-    ['BS lead (mm)',                               state.bs_pitch ?? 2,                              '',    'Ball screw lead / pitch'],
-    ['BS diameter (mm)',                           state.bs_dia ?? 6,                                '',    'Ball screw shaft diameter'],
-    ['BS length (mm)',                             state.bs_length ?? 500,                           '',    'Ball screw shaft length'],
-    ['BS material',                               state.bs_material ?? 'steel',                     '',    'Options: steel / stainless / aluminum'],
-    ['BS efficiency',                              state.bs_efficiency ?? 0.98,                      '',    'Ball screw mechanical efficiency (0–1)'],
-    ['BS nut mass (kg)',                           state.bs_nut_mass ?? 0.052,                       '',    'Ball screw nut mass (from catalog)'],
-    ['BS preload torque (Nm)',                     state.bs_preload_torque ?? 0,                     '',    'Preload torque (direct input, from catalog)'],
-    ['No. of fixed side support blocks',           state.bs_n_fixed_blocks ?? 1,                    '',    'No. of fixed-end bearing support blocks'],
-    ['Fixed side drag torque per block (Nm)',      state.bs_fixed_drag_axial ?? 0,                   '',    'Drag torque per fixed-side block (from catalog)'],
-    ['Fixed side support block drag torque (Nm)',  bearingDrag.fixed,                                '',    'Auto-calculated: No. blocks × drag/block'],
-    ['No. of support side support blocks',         state.bs_n_support_blocks ?? 1,                  '',    'No. of floating-end bearing support blocks'],
-    ['Support side drag torque per block (Nm)',    state.bs_support_drag_axial ?? 0,                 '',    'Drag torque per support-side block (from catalog)'],
-    ['Support side support block drag torque (Nm)', bearingDrag.support,                            '',    'Auto-calculated: No. blocks × drag/block'],
-    ['Bearing drag torque (Nm)',                   bearingDrag.total,                                '',    'Auto-calculated: fixed total + support total'],
-    ['PK ratio',                                   state.pk_ratio ?? 1,                              '',    'Parallel kit gear ratio'],
-    ['PK no-load (Nm)',                            state.pk_no_load_torque ?? 0,                     '',    'Parallel kit no-load running torque'],
-    ['PK inertia (kg·m²)',                        state.pk_inertia ?? 0,                            '',    'Parallel kit moment of inertia'],
-    ['PK max torque (Nm)',                         state.pk_max_torque ?? 0,                         '',    'Parallel kit max transferable torque'],
-    ['PK max speed (rpm)',                         state.pk_max_speed ?? 0,                          '',    'Parallel kit max input speed'],
-    ['GB ratio',                                   state.gb_ratio ?? 1,                              '',    'Gearbox ratio'],
-    ['GB efficiency',                              state.gb_efficiency ?? 0,                         '',    'Gearbox mechanical efficiency (0–1)'],
-    ['GB no-load (Nm)',                            state.gb_no_load_torque ?? 0,                     '',    'Gearbox no-load running torque'],
-    ['GB inertia (kg·m²)',                        state.gb_inertia ?? 0,                            '',    'Gearbox reflected inertia'],
-    ['Backlash (arcmin)',                          state.gb_backlash ?? 0,                           '',    'Gearbox backlash'],
-    ['Safety factor (%)',                          state.safety_factor ?? 20,                        '',    'Design safety factor (%)'],
-    ['Cycle time (s)',                             state.project_total_cycle ?? 7,                   '',    'Total machine cycle time'],
-    ['Op. time (s)',                               state.project_operating_time ?? 2.6,              '',    'Servo operating time per cycle'],
-    ['Shifts/day',                                 state.project_shifts ?? 3,                        '',    'Number of shifts per day'],
-    ['Hours/shift',                                state.project_hours_shift ?? 7,                   '',    'Working hours per shift'],
-    ['Days/week',                                  state.project_days_week ?? 6,                     '',    'Working days per week'],
-    ['Service life (yrs)',                         state.project_service_life ?? 10,                 '',    'Required machine service life'],
-    ['Accuracy (µm)',                              state.project_accuracy ?? 20,                     '',    'Required positioning accuracy'],
-    ['Parallel Kit needed',                        state.pk_ratio > 1 ? 'Yes' : 'No',               '',    'Options: Yes / No'],
-    ['Gearbox needed',                             state.gb_ratio > 1 ? 'Yes' : 'No',               '',    'Options: Yes / No'],
+    ['Parameter', 'Notes', 'OP10 / App-1'],
+    ...rows_,
   ];
 
   const ws = XLSX.utils.aoa_to_sheet(data);
-  ws['!cols'] = [{ wch: 46 }, { wch: 18 }, { wch: 8 }, { wch: 48 }];
+  ws['!cols'] = [{ wch: 46 }, { wch: 48 }, { wch: 18 }];
 
   const titleStyle  = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 14 }, fill: { patternType: 'solid', fgColor: { rgb: '1F3864' } }, alignment: { horizontal: 'center' } };
   const headerStyle = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { patternType: 'solid', fgColor: { rgb: '2F75B5' } } };
@@ -260,8 +264,8 @@ function downloadExcelTemplate() {
   const helperStyle = { fill: { patternType: 'solid', fgColor: { rgb: 'FFF2CC' } }, font: { italic: true } };
   const noteStyle   = { font: { italic: true, color: { rgb: '595959' } }, fill: { patternType: 'solid', fgColor: { rgb: 'F2F2F2' } } };
 
-  ['A1', 'B1', 'C1', 'D1'].forEach(c => { if (ws[c]) ws[c].s = titleStyle; });
-  ['A3', 'B3', 'C3', 'D3'].forEach(c => { if (ws[c]) ws[c].s = headerStyle; });
+  ['A1', 'B1', 'C1'].forEach(c => { if (ws[c]) ws[c].s = titleStyle; });
+  ['A3', 'B3', 'C3'].forEach(c => { if (ws[c]) ws[c].s = headerStyle; });
 
   const HELPER_LABELS = new Set([
     'Fixed side support block drag torque (Nm)',
@@ -272,11 +276,11 @@ function downloadExcelTemplate() {
     if (i < 3 || !row[0]) return;
     const rowNum = i + 1;
     const isHelper = HELPER_LABELS.has(row[0]);
-    if (ws[`B${rowNum}`]) ws[`B${rowNum}`].s = isHelper ? helperStyle : inputStyle;
-    if (ws[`D${rowNum}`]) ws[`D${rowNum}`].s = noteStyle;
+    if (ws[`B${rowNum}`]) ws[`B${rowNum}`].s = noteStyle;
+    if (ws[`C${rowNum}`]) ws[`C${rowNum}`].s = isHelper ? helperStyle : inputStyle;
   });
 
-  // Excel formulas for bearing drag totals (yellow helper cells)
+  // Excel formulas for bearing drag totals (yellow helper cells) — values in col C
   const findRow = (label) => { const idx = data.findIndex(r => r[0] === label); return idx >= 0 ? idx + 1 : null; };
   const rFixedN   = findRow('No. of fixed side support blocks');
   const rFixedB   = findRow('Fixed side drag torque per block (Nm)');
@@ -286,9 +290,9 @@ function downloadExcelTemplate() {
   const rSupportT = findRow('Support side support block drag torque (Nm)');
   const rBearing  = findRow('Bearing drag torque (Nm)');
 
-  if (rFixedT && rFixedN && rFixedB)   ws[`B${rFixedT}`]   = { t: 'n', f: `B${rFixedN}*B${rFixedB}`,   v: bearingDrag.fixed,   s: helperStyle };
-  if (rSupportT && rSupportN && rSupportB) ws[`B${rSupportT}`] = { t: 'n', f: `B${rSupportN}*B${rSupportB}`, v: bearingDrag.support, s: helperStyle };
-  if (rBearing && rFixedT && rSupportT) ws[`B${rBearing}`]  = { t: 'n', f: `B${rFixedT}+B${rSupportT}`, v: bearingDrag.total,   s: helperStyle };
+  if (rFixedT && rFixedN && rFixedB)   ws[`C${rFixedT}`]   = { t: 'n', f: `C${rFixedN}*C${rFixedB}`,   v: bearingDrag.fixed,   s: helperStyle };
+  if (rSupportT && rSupportN && rSupportB) ws[`C${rSupportT}`] = { t: 'n', f: `C${rSupportN}*C${rSupportB}`, v: bearingDrag.support, s: helperStyle };
+  if (rBearing && rFixedT && rSupportT) ws[`C${rBearing}`]  = { t: 'n', f: `C${rFixedT}+C${rSupportT}`, v: bearingDrag.total,   s: helperStyle };
 
   const workbook = { SheetNames: ['User input'], Sheets: { 'User input': ws } };
   const workbookArray = XLSX.write(workbook, { bookType: 'xlsx', type: 'array', cellStyles: true });
@@ -1608,9 +1612,19 @@ function parseExcelValues(rows) {
       return { key: keyA, value };
     }
 
-    // Layout B: col0 = label, col1 = value (Servo Inputs sheet)
+    // Layout B: col0 = label, col1 = value (old template)
+    // Layout B2: col0 = label, col1 = notes (descriptive string), col2 = value (new template)
     const keyB = tryMatch(row[0]);
-    if (keyB) return { key: keyB, value: row[1] };
+    if (keyB) {
+      // If col1 looks like a notes string (non-numeric, non-empty, col2 has a real value) → new format
+      const col1 = row[1];
+      const col2 = row[2];
+      const col1IsNotes = col1 !== undefined && col1 !== null && col1 !== '' &&
+        typeof col1 === 'string' && isNaN(Number(String(col1).trim()));
+      const col2HasValue = col2 !== undefined && col2 !== null && col2 !== '';
+      const value = (col1IsNotes && col2HasValue) ? col2 : col1;
+      return { key: keyB, value };
+    }
 
     return null;
   }

@@ -757,144 +757,160 @@ function autoSelectMotor(st) {
         // Read all rows including blanks so row indices match Excel row numbers
         const allRows = XLSX.utils.sheet_to_json(ws, { header:1, blankrows:true });
 
+        // Detect transposed layout: row where col A = "Parameter"
+        // Old format: col B = "Value"  → single station, value at col index 1
+        // New format: col B = "Notes"  → multi-station, values at col index 2, 3, 4…
         const transposedHeaderIdx = allRows.findIndex(r =>
           Array.isArray(r) &&
           normaliseHeader(r[0] || '') === 'parameter' &&
-          normaliseHeader(r[1] || '') === 'value'
+          (normaliseHeader(r[1] || '') === 'value' || normaliseHeader(r[1] || '') === 'notes')
         );
 
         if (transposedHeaderIdx >= 0) {
-          const motorState = JSON.parse(JSON.stringify(DEFAULT_STATE));
-          const stnState = {
-            stnNo: '',
-            applStr: '',
-            motorName: null,
-            massComp: {},
-            frictionComp: {},
-            sawBearingDragComponents: false,
-            sawBearingDragTotal: false,
-          };
+          const headerRow = allRows[transposedHeaderIdx];
+          const isNewFormat = normaliseHeader(headerRow[1] || '') === 'notes';
 
-          for (let i = transposedHeaderIdx + 1; i < allRows.length; i++) {
-            const row = allRows[i];
-            if (!Array.isArray(row) || row.every(c => c == null || String(c).trim() === '')) continue;
-            const key = matchUserInputHeader(row[0]);
-            if (!key) continue;
-            const raw = row[1];
-            if (raw == null || String(raw).trim() === '') continue;
+          // Station columns: old format = [1], new format = [2, 3, 4, ...]
+          const stationColIndices = isNewFormat
+            ? headerRow.slice(2).map((_, i) => i + 2).filter(i => headerRow[i] != null && String(headerRow[i]).trim() !== '')
+            : [1];
+          if (!stationColIndices.length) stationColIndices.push(isNewFormat ? 2 : 1);
 
-            if (key === 'stn_no') {
-              stnState.stnNo = String(raw).trim();
-            } else if (key === 'appl') {
-              stnState.applStr = String(raw).trim();
-            } else if (key === 'motor_name') {
-              stnState.motorName = String(raw).trim();
-            } else if (key === 'has_parallel_kit' || key === 'has_gearbox') {
-              const v = String(raw).trim().toLowerCase();
-              motorState[key] = (v === 'yes' || v === '1' || v === 'true') ? 1 : 0;
-            } else if (key.startsWith('_yesno:')) {
-              const stateKey = key.slice(7);
-              const v = String(raw).trim().toLowerCase();
-              motorState[stateKey] = (v === 'yes' || v === '1' || v === 'true') ? 1 : 0;
-            } else if (key.startsWith('_text_step:')) {
-              const field = key.slice(11);
-              const v = String(raw).trim().toLowerCase();
-              if (field === 'external_force_dir') {
-                motorState.steps[0][field] = v.includes('aid') ? 'aiding' : 'opposing';
-              } else if (field === 'movement_dir') {
-                motorState.steps[0][field] = (v.includes('aid') || v.includes('with')) ? 'with_gravity' : 'against_gravity';
+          // Parse one station column into motorState — helper function
+          function parseOneStation(colIdx) {
+            const motorState = JSON.parse(JSON.stringify(DEFAULT_STATE));
+            const stnState = {
+              stnNo: '', applStr: '', motorName: null,
+              massComp: {}, frictionComp: {},
+              sawBearingDragComponents: false, sawBearingDragTotal: false,
+            };
+
+            for (let i = transposedHeaderIdx + 1; i < allRows.length; i++) {
+              const row = allRows[i];
+              if (!Array.isArray(row) || row.every(c => c == null || String(c).trim() === '')) continue;
+              const key = matchUserInputHeader(row[0]);
+              if (!key) continue;
+              const raw = row[colIdx];
+              if (raw == null || String(raw).trim() === '') continue;
+
+              if (key === 'stn_no') {
+                stnState.stnNo = String(raw).trim();
+              } else if (key === 'appl') {
+                stnState.applStr = String(raw).trim();
+              } else if (key === 'motor_name') {
+                stnState.motorName = String(raw).trim();
+              } else if (key === 'has_parallel_kit' || key === 'has_gearbox') {
+                const v = String(raw).trim().toLowerCase();
+                motorState[key] = (v === 'yes' || v === '1' || v === 'true') ? 1 : 0;
+              } else if (key.startsWith('_yesno:')) {
+                const stateKey = key.slice(7);
+                const v = String(raw).trim().toLowerCase();
+                motorState[stateKey] = (v === 'yes' || v === '1' || v === 'true') ? 1 : 0;
+              } else if (key.startsWith('_text_step:')) {
+                const field = key.slice(11);
+                const v = String(raw).trim().toLowerCase();
+                if (field === 'external_force_dir') {
+                  motorState.steps[0][field] = v.includes('aid') ? 'aiding' : 'opposing';
+                } else if (field === 'movement_dir') {
+                  motorState.steps[0][field] = (v.includes('aid') || v.includes('with')) ? 'with_gravity' : 'against_gravity';
+                }
+              } else if (key.startsWith('_mass:')) {
+                const component = key.slice(6);
+                const num = parseNumberCell(raw);
+                if (!isNaN(num)) stnState.massComp[component] = num;
+              } else if (key.startsWith('_friction:')) {
+                const component = key.slice(10);
+                const num = parseNumberCell(raw);
+                if (!isNaN(num)) stnState.frictionComp[component] = num;
+              } else if ([
+                'bs_n_fixed_blocks','bs_fixed_drag_axial','bs_fixed_drag_radial',
+                'bs_n_support_blocks','bs_support_drag_axial','bs_support_drag_radial',
+              ].includes(key)) {
+                stnState.sawBearingDragComponents = true;
+                const num = parseNumberCell(raw);
+                if (!isNaN(num)) motorState[key] = num;
+              } else if (key === 'bs_bearing_drag_torque') {
+                stnState.sawBearingDragTotal = true;
+                const num = parseNumberCell(raw);
+                if (!isNaN(num)) motorState[key] = num;
+              } else if (key.startsWith('step:')) {
+                const field = key.slice(5);
+                const num = parseNumberCell(raw);
+                if (!isNaN(num)) motorState.steps[0][field] = num;
+              } else {
+                const num = parseNumberCell(raw);
+                if (!isNaN(num)) motorState[key] = num;
               }
-            } else if (key.startsWith('_mass:')) {
-              const component = key.slice(6);
-              const num = parseNumberCell(raw);
-              if (!isNaN(num)) stnState.massComp[component] = num;
-            } else if (key.startsWith('_friction:')) {
-              const component = key.slice(10);
-              const num = parseNumberCell(raw);
-              if (!isNaN(num)) stnState.frictionComp[component] = num;
-            } else if ([
-              'bs_n_fixed_blocks',
-              'bs_fixed_drag_axial',
-              'bs_fixed_drag_radial',
-              'bs_n_support_blocks',
-              'bs_support_drag_axial',
-              'bs_support_drag_radial',
-            ].includes(key)) {
-              stnState.sawBearingDragComponents = true;
-              const num = parseNumberCell(raw);
-              if (!isNaN(num)) motorState[key] = num;
-            } else if (key === 'bs_bearing_drag_torque') {
-              stnState.sawBearingDragTotal = true;
-              const num = parseNumberCell(raw);
-              if (!isNaN(num)) motorState[key] = num;
-            } else if (key.startsWith('step:')) {
-              const field = key.slice(5);
-              const num = parseNumberCell(raw);
-              if (!isNaN(num)) motorState.steps[0][field] = num;
-            } else {
-              const num = parseNumberCell(raw);
-              if (!isNaN(num)) motorState[key] = num;
             }
+
+            // Resolve mass components
+            if (Object.keys(stnState.massComp).length > 0) {
+              const nBlocks = stnState.massComp.n_blocks || 0;
+              motorState.steps[0].load_mass =
+                (stnState.massComp.payload    || 0) +
+                (stnState.massComp.carriage   || 0) +
+                (stnState.massComp.nut        || 0) +
+                (stnState.massComp.block_mass || 0) * nBlocks;
+              motorState.guide_mass = 0;
+            }
+            // Resolve friction components
+            if (Object.keys(stnState.frictionComp).length > 0) {
+              const nBlocks     = stnState.massComp.n_blocks || 1;
+              const Ffp         = (stnState.frictionComp.lm_per_block   || 0) * nBlocks;
+              const nCbBushings = stnState.frictionComp.n_cb_bushings    || 0;
+              const Ffcb        = motorState.has_counterbalance
+                                  ? (stnState.frictionComp.cb_per_bushing || 0) * nCbBushings
+                                  : 0;
+              motorState.guide_force = Ffp + Ffcb;
+            }
+            // Bearing drag
+            const fixedDrag   = (motorState.bs_n_fixed_blocks   || 0) * (motorState.bs_fixed_drag_axial   || 0);
+            const supportDrag = (motorState.bs_n_support_blocks || 0) * (motorState.bs_support_drag_axial || 0);
+            if (stnState.sawBearingDragComponents) {
+              motorState.bs_bearing_drag_torque = fixedDrag + supportDrag;
+            } else if (!stnState.sawBearingDragTotal) {
+              motorState.bs_bearing_drag_torque = motorState.bs_bearing_drag_torque || 0;
+            }
+
+            const appName = [stnState.stnNo, stnState.applStr].filter(Boolean).join(' ') ||
+                            (isNewFormat ? String(headerRow[colIdx] || '').trim() : '') ||
+                            'Application 1';
+            motorState.steps[0].label = appName;
+            return { motorState, stnState, appName };
           }
 
-          const hasMassComponents = Object.keys(stnState.massComp).length > 0;
-          if (hasMassComponents) {
-            const nBlocks = stnState.massComp.n_blocks || 0;
-            motorState.steps[0].load_mass =
-              (stnState.massComp.payload    || 0) +
-              (stnState.massComp.carriage   || 0) +
-              (stnState.massComp.nut        || 0) +
-              (stnState.massComp.block_mass || 0) * nBlocks;
-            motorState.guide_mass = 0;
-          }
+          let added = 0, updated = 0;
+          stationColIndices.forEach(colIdx => {
+            const { motorState, stnState, appName } = parseOneStation(colIdx);
+            const autoResult = autoSelectMotor(motorState);
+            const motorPN     = stnState.motorName || (autoResult ? autoResult.motor   : null);
+            const motorIdx    = autoResult ? autoResult.motorIdx : -1;
+            const motorStatus = autoResult ? autoResult.status   : 'NEW';
+            const motorMeta   = autoResult ? autoResult.metrics  : null;
 
-          const hasfrictionComponents = Object.keys(stnState.frictionComp).length > 0;
-          if (hasfrictionComponents) {
-            const nBlocks     = stnState.massComp.n_blocks || 1;
-            const Ffp         = (stnState.frictionComp.lm_per_block   || 0) * nBlocks;
-            const nCbBushings = stnState.frictionComp.n_cb_bushings    || 0;
-            const Ffcb        = motorState.has_counterbalance
-                                ? (stnState.frictionComp.cb_per_bushing || 0) * nCbBushings
-                                : 0;
-            motorState.guide_force = Ffp + Ffcb;
-          }
+            const existing = Projects.get(projectId)?.servos.find(s => s.name === appName);
+            if (existing) {
+              Projects.updateServo(projectId, existing.id, {
+                state: motorState, motor: motorPN, motorIdx,
+                status: motorStatus, metrics: motorMeta,
+              });
+              updated++;
+            } else {
+              const sid = Projects.addServo(projectId, appName);
+              Projects.updateServo(projectId, sid, {
+                state: motorState, motor: motorPN, motorIdx,
+                status: motorStatus, metrics: motorMeta,
+              });
+              added++;
+            }
+          });
 
-          const fixedBearingDrag =
-            (motorState.bs_n_fixed_blocks || 0) *
-            (motorState.bs_fixed_drag_axial || 0);
-          const supportBearingDrag =
-            (motorState.bs_n_support_blocks || 0) *
-            (motorState.bs_support_drag_axial || 0);
-          if (stnState.sawBearingDragComponents) {
-            motorState.bs_bearing_drag_torque = fixedBearingDrag + supportBearingDrag;
-          } else if (!stnState.sawBearingDragTotal) {
-            motorState.bs_bearing_drag_torque = motorState.bs_bearing_drag_torque || 0;
-          }
-
-          const appName = [stnState.stnNo, stnState.applStr].filter(Boolean).join(' ') || 'Application 1';
-          motorState.steps[0].label = appName;
-
-          const autoResult = autoSelectMotor(motorState);
-          const motorPN     = stnState.motorName || (autoResult ? autoResult.motor   : null);
-          const motorIdx    = autoResult ? autoResult.motorIdx : -1;
-          const motorStatus = autoResult ? autoResult.status   : 'NEW';
-          const motorMeta   = autoResult ? autoResult.metrics  : null;
-
-          const existing = Projects.get(projectId)?.servos.find(s => s.name === appName);
-          if (existing) {
-            Projects.updateServo(projectId, existing.id, {
-              state: motorState, motor: motorPN, motorIdx,
-              status: motorStatus, metrics: motorMeta,
-            });
-            showStatus('Imported 1 application (updated).', false);
-          } else {
-            const sid = Projects.addServo(projectId, appName);
-            Projects.updateServo(projectId, sid, {
-              state: motorState, motor: motorPN, motorIdx,
-              status: motorStatus, metrics: motorMeta,
-            });
-            showStatus('Imported 1 application (new).', false);
-          }
+          const total = added + updated;
+          showStatus(
+            `Imported ${total} application${total !== 1 ? 's' : ''} ` +
+            `(${added} new, ${updated} updated).`,
+            false
+          );
           renderApps();
           return;
         }

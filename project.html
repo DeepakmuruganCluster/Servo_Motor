@@ -689,6 +689,17 @@ function autoSelectMotor(st) {
     'gearbox inertia':                                'gb_inertia',
     'gb backlash':                                    'gb_backlash',
     'gearbox backlash':                               'gb_backlash',
+    // New fields added for 5-column template format
+    'lm guide present':                               '_yesno:has_lm_guide',
+    'bs max speed':                                   'bs_max_speed',
+    'bs max torque':                                  'bs_max_torque',
+    'bs repetition accuracy':                         'bs_repetition_accuracy',
+    'service life 100 load':                          'guide_service_life',
+    'no of linear bushings':                          '_friction:n_cb_bushings',
+    'cycle time':                                     'project_total_cycle',
+    'op time':                                        'project_operating_time',
+    'pk no load':                                     'pk_no_load_torque',
+    'gb no load':                                     'gb_no_load_torque',
   };
 
   const DEFAULT_STATE = {
@@ -757,24 +768,40 @@ function autoSelectMotor(st) {
         // Read all rows including blanks so row indices match Excel row numbers
         const allRows = XLSX.utils.sheet_to_json(ws, { header:1, blankrows:true });
 
-        // Detect transposed layout: row where col A = "Parameter"
-        // Old format: col B = "Value"  → single station, value at col index 1
-        // New format: col B = "Notes"  → multi-station, values at col index 2, 3, 4…
-        const transposedHeaderIdx = allRows.findIndex(r =>
+        // Detect transposed layout: row where col A = "Parameter" (3-col format)
+        // OR col A = "Group", col B = "Parameter" (5-col format with group column)
+        // Old 3-col: col B = "Value"  → single station, value at col index 1
+        // New 3-col: col B = "Notes"  → multi-station, values at col index 2, 3, 4…
+        // New 5-col: col A = "Group", col B = "Parameter", col C = "Notes" → stations at col 3, 4…
+        let transposedHeaderIdx = allRows.findIndex(r =>
           Array.isArray(r) &&
           normaliseHeader(r[0] || '') === 'parameter' &&
           (normaliseHeader(r[1] || '') === 'value' || normaliseHeader(r[1] || '') === 'notes')
         );
+        let paramColOffset = 0; // 0 = col A is Parameter; 1 = col A is Group, col B is Parameter
+
+        if (transposedHeaderIdx < 0) {
+          // Also detect 5-col format: Group | Parameter | Notes | stations…
+          transposedHeaderIdx = allRows.findIndex(r =>
+            Array.isArray(r) &&
+            normaliseHeader(r[0] || '') === 'group' &&
+            normaliseHeader(r[1] || '') === 'parameter' &&
+            normaliseHeader(r[2] || '') === 'notes'
+          );
+          if (transposedHeaderIdx >= 0) paramColOffset = 1;
+        }
 
         if (transposedHeaderIdx >= 0) {
           const headerRow = allRows[transposedHeaderIdx];
-          const isNewFormat = normaliseHeader(headerRow[1] || '') === 'notes';
+          const notesOrValCol = paramColOffset + 1;
+          const isNewFormat = paramColOffset === 1 || normaliseHeader(headerRow[notesOrValCol] || '') === 'notes';
 
-          // Station columns: old format = [1], new format = [2, 3, 4, ...]
+          // Station columns start after Notes column (or after Value column for old format)
+          const firstStnCol = isNewFormat ? notesOrValCol + 1 : notesOrValCol;
           const stationColIndices = isNewFormat
-            ? headerRow.slice(2).map((_, i) => i + 2).filter(i => headerRow[i] != null && String(headerRow[i]).trim() !== '')
-            : [1];
-          if (!stationColIndices.length) stationColIndices.push(isNewFormat ? 2 : 1);
+            ? headerRow.slice(firstStnCol).map((_, i) => i + firstStnCol).filter(i => headerRow[i] != null && String(headerRow[i]).trim() !== '')
+            : [notesOrValCol];
+          if (!stationColIndices.length) stationColIndices.push(firstStnCol);
 
           // Parse one station column into motorState — helper function
           function parseOneStation(colIdx) {
@@ -788,7 +815,7 @@ function autoSelectMotor(st) {
             for (let i = transposedHeaderIdx + 1; i < allRows.length; i++) {
               const row = allRows[i];
               if (!Array.isArray(row) || row.every(c => c == null || String(c).trim() === '')) continue;
-              const key = matchUserInputHeader(row[0]);
+              const key = matchUserInputHeader(row[paramColOffset]); // col 0 (3-col) or col 1 (5-col with Group)
               if (!key) continue;
               const raw = row[colIdx];
               if (raw == null || String(raw).trim() === '') continue;
@@ -1106,95 +1133,112 @@ function autoSelectMotor(st) {
   function downloadTemplate() {
     if (!window.XLSX) return;
 
-    // Read topology from configurator — fall back to "show all" if not yet configured
     const projCfg = Projects.get(projectId)?.config || null;
     const showLM  = !projCfg || projCfg.has_lm_guide;
     const showCB  = !projCfg || (projCfg.counterbalance && projCfg.counterbalance !== 'none');
     const showPK  = !projCfg || projCfg.has_parallel_kit;
     const showGB  = !projCfg || projCfg.has_gearbox;
+    const cbType  = projCfg?.counterbalance || 'guide_shaft';
 
-    // Layout: A=Parameter (units in name), B=Notes, C=Station 1, D=Station 2
+    // Layout: A=Group (coloured), B=Parameter, C=Notes, D=Station 1, E=Station 2
+    // Each row: [group, label, notes, defaultVal1, defaultVal2]
     const rows = [
-      // ── Identity ──────────────────────────────────────────────────────────
-      ['Stn no',                                    'Station identifier',                              'OP10',           'OP20'],
-      ['Appl',                                      'Application name',                                'App-1',          'App-2'],
-      // ── Motion ────────────────────────────────────────────────────────────
-      ['Stroke (mm)',                               'Linear travel distance',                          50,               50],
-      ['Move time (s)',                             'Total move time (accel + const + decel)',          1.0,              1.0],
-      ['Dwell time (s)',                            'Wait time at end of stroke',                      0.1,              0.1],
-      ['Acceleration time (s)',                     'Accel phase duration (leave blank to use Acc%)',  0.2,              0.2],
-      ['Deceleration time (s)',                     'Decel phase duration (leave blank to use Dec%)',  0.2,              0.2],
-      ['External force (N)',                        'Process or payload force on the axis',            100,              100],
-      ['Ext. force direction',                      'Options: opposing / aiding',                      'opposing',       'opposing'],
-      ['Payload movement direction',                'Options: against gravity / with gravity',         'against gravity','against gravity'],
-      // ── Mass ──────────────────────────────────────────────────────────────
-      ['Payload mass (kg)',                         'Mass of payload being moved',                     3.0,              3.0],
-      ['Carriage mass (kg)',                        'LM guide carriage / saddle mass',                 0.5,              0.5],
-      ['No. carriage blocks',                       'Number of LM guide carriage blocks',              2,                2],
-      ['Inclination angle (°)',                     '0 = horizontal, 90 = vertical',                   45,               45],
-      // ── LM Guide (shown when has_lm_guide) ───────────────────────────────
+      // ── General ──────────────────────────────────────────────────────────
+      ['General',       'Stn no',                               'Station identifier',                              'OP10',            'OP20'],
+      ['General',       'Appl',                                 'Application name / description',                  'App-1',           'App-2'],
+      // ── Motion Step ──────────────────────────────────────────────────────
+      ['Motion Step',   'Stroke (mm)',                          'Linear travel distance',                           50,                50],
+      ['Motion Step',   'Move time (s)',                        'Total move time (accel + const + decel)',           1.0,               1.0],
+      ['Motion Step',   'Dwell time (s)',                       'Wait time at end of stroke',                       0.1,               0.1],
+      ['Motion Step',   'Acceleration time (s)',                'Accel phase duration (leave blank to use Acc%)',   0.2,               0.2],
+      ['Motion Step',   'Deceleration time (s)',                'Decel phase duration (leave blank to use Dec%)',   0.2,               0.2],
+      ['Motion Step',   'External force (N)',                   'Process or payload force on the axis',             100,               100],
+      ['Motion Step',   'Ext. force direction',                 'Options: opposing / aiding',                       'opposing',        'opposing'],
+      ['Motion Step',   'Payload movement direction',           'Options: against gravity / with gravity',          'against gravity', 'against gravity'],
+      ['Motion Step',   'Inclination angle (°)',                '0 = horizontal, 90 = vertical',                    0,                 0],
+      ['Motion Step',   'Payload mass (kg)',                    'Mass of payload being moved',                      3.0,               3.0],
+      ['Motion Step',   'Fixture / carriage mass (kg)',         'LM guide carriage / saddle mass per block',        0.5,               0.5],
+      ['Motion Step',   'No. carriage blocks',                  'Number of LM guide carriage blocks',               2,                 2],
+      // ── LM Guide ─────────────────────────────────────────────────────────
       ...(showLM ? [
-        ['Friction coeff LM guide (μ)',             'Friction coefficient of LM guide',                0.005,            0.005],
-        ['Friction Force (N)',                      'Friction force per carriage block (N)',            3.0,              3.0],
+        ['LM Guide',    'LM guide present',                     'Options: yes / no',                                'yes',             'yes'],
+        ['LM Guide',    'Guide block mass (kg)',                 'Mass of each guide carriage block',                0.2,               0.2],
+        ['LM Guide',    'LM guide friction per block (N)',       'Friction force per carriage block',                3.0,               3.0],
+        ['LM Guide',    'Max withstand force (N)',               'Maximum rated withstand force of LM guide',        1000,              1000],
+        ['LM Guide',    'Service life @100% load (km)',          'Rated service life at full load',                  5000,              5000],
       ] : []),
-      // ── Counterbalance (shown when counterbalance ≠ none) ─────────────────
+      // ── Counterbalance ────────────────────────────────────────────────────
       ...(showCB ? [
-        ['Linear bush friction force (counterbalance)', 'Friction force per counterbalance bushing (N)', 3.0,           3.0],
-        ['number of linear bushings (counterbalance)',  'No. of counterbalance linear bushings',          4,             4],
-        ['Counterbalance exists',                   'Options: yes / no',                               'yes',           'yes'],
-        ['CB mass (kg)',                            'Counterbalance mass',                             0,               0],
-        ['CB inclination (°)',                      'Counterbalance inclination angle',                 90,              90],
-        ['CB friction coeff (μ)',                   'Counterbalance guide friction coefficient',        0.005,           0.005],
+        ['Counterbalance', 'Counterbalance present',            'Options: yes / no',                                'yes',             'yes'],
+        ['Counterbalance', 'CB mass (kg)',                      'Counterbalance mass',                              0,                 0],
+        ['Counterbalance', 'CB inclination (°)',                'Counterbalance inclination angle (0–90°)',          90,                90],
+        ...(cbType !== 'pulley' ? [
+          ['Counterbalance', 'CB friction coeff (μ)',           'Guide shaft friction coefficient',                 0.005,             0.005],
+          ['Counterbalance', 'Linear bush friction force (N)',  'Friction force per linear bushing',                3.0,               3.0],
+          ['Counterbalance', 'No. of linear bushings',          'Total number of linear bushings on CB',            4,                 4],
+        ] : []),
       ] : []),
       // ── Ball Screw ────────────────────────────────────────────────────────
-      ['BS lead (mm)',                              'Ball screw lead / pitch',                          5,                5],
-      ['BS efficiency',                             'Ball screw mechanical efficiency (0–1)',           0.95,             0.95],
-      ['No. of fixed side support blocks',          'No. of fixed-end bearing support blocks',         1,                1],
-      ['Fixed side drag torque per block (Nm)',     'Drag torque per fixed-side block (from catalog)', 0,                0],
-      ['Fixed side support block drag torque (Nm)', 'Auto-calculated: No. blocks × drag/block',       0,                0],
-      ['No. of support side support blocks',        'No. of floating-end bearing support blocks',      1,                1],
-      ['Support side drag torque per block (Nm)',   'Drag torque per support-side block (from catalog)',0,               0],
-      ['Support side support block drag torque (Nm)','Auto-calculated: No. blocks × drag/block',      0,                0],
-      ['Bearing drag torque (Nm)',                  'Auto-calculated: fixed total + support total',    0,                0],
-      // ── Parallel Kit (shown when has_parallel_kit) ────────────────────────
+      ['Ball Screw',    'BS lead (mm/rev)',                     'Ball screw lead per revolution',                   5,                 5],
+      ['Ball Screw',    'BS diameter (mm)',                     'Ball screw shaft diameter',                         25,                25],
+      ['Ball Screw',    'BS length (mm)',                       'Ball screw shaft length',                           500,               500],
+      ['Ball Screw',    'BS material',                          'Options: steel / stainless / aluminum',             'steel',           'steel'],
+      ['Ball Screw',    'BS efficiency',                        'Mechanical efficiency (0–1)',                        0.95,              0.95],
+      ['Ball Screw',    'BS nut mass (kg)',                     'Mass of ball screw nut',                            0.052,             0.052],
+      ['Ball Screw',    'BS preload torque (Nm)',               'Nut preload torque',                                0,                 0],
+      ['Ball Screw',    'No. of fixed side support blocks',               'Fixed-end bearing support blocks',                      1,                 1],
+      ['Ball Screw',    'Fixed side drag torque per block axial (Nm)',   'Axial drag torque per fixed-end block (from catalog)',   0,                 0],
+      ['Ball Screw',    'Fixed side drag torque per block radial (Nm)',  'Radial drag torque per fixed-end block (from catalog)',  0,                 0],
+      ['Ball Screw',    'No. of support side support blocks',            'Floating-end bearing support blocks',                   1,                 1],
+      ['Ball Screw',    'Support side drag torque per block axial (Nm)', 'Axial drag torque per floating-end block (from catalog)',0,               0],
+      ['Ball Screw',    'Support side drag torque per block radial (Nm)','Radial drag torque per floating-end block (from catalog)',0,             0],
+      ['Ball Screw',    'BS max speed (rpm)',                   'Maximum permitted screw speed',                     12000,             12000],
+      ['Ball Screw',    'BS max torque (Nm)',                   'Maximum permitted input torque',                    3,                 3],
+      ['Ball Screw',    'BS repetition accuracy (μm)',          'Repetition / positioning accuracy',                 10,                10],
+      // ── Parallel Kit ──────────────────────────────────────────────────────
       ...(showPK ? [
-        ['Parallel Kit needed',                     'Options: Yes / No',                               'Yes',            'Yes'],
-        ['PK ratio',                                'Parallel kit gear ratio',                         1,                1],
-        ['PK no-load (Nm)',                         'Parallel kit no-load running torque',             0.07,             0.07],
-        ['PK inertia (kg·m²)',                     'Parallel kit moment of inertia',                  2.67e-5,          2.67e-5],
-        ['PK max torque (Nm)',                      'Parallel kit max transferable torque',             3,                3],
-        ['PK max speed (rpm)',                      'Parallel kit max input speed',                    6000,             6000],
+        ['Parallel Kit','Parallel Kit needed',                  'Options: yes / no',                                'yes',             'yes'],
+        ['Parallel Kit','PK ratio',                             'Parallel kit gear ratio',                           1,                 1],
+        ['Parallel Kit','PK no-load torque (Nm)',               'No-load running torque',                            0.07,              0.07],
+        ['Parallel Kit','PK inertia (kg·m²)',                   'Parallel kit moment of inertia',                   2.67e-5,           2.67e-5],
+        ['Parallel Kit','PK max torque (Nm)',                   'Max transferable torque',                           3,                 3],
+        ['Parallel Kit','PK max speed (rpm)',                   'Max input shaft speed',                             6000,              6000],
       ] : []),
-      // ── Gearbox (shown when has_gearbox) ──────────────────────────────────
+      // ── Gearbox ───────────────────────────────────────────────────────────
       ...(showGB ? [
-        ['Gearbox needed',                          'Options: Yes / No',                               'Yes',            'Yes'],
-        ['GB ratio',                                'Gearbox ratio',                                   3,                3],
-        ['GB efficiency',                           'Gearbox mechanical efficiency (0–1)',              0.95,             0.95],
-        ['GB no-load (Nm)',                         'Gearbox no-load running torque',                  0.07,             0.07],
-        ['GB inertia (kg·m²)',                     'Gearbox reflected inertia',                       0,                0],
-        ['Backlash (arcmin)',                       'Gearbox backlash',                                0,                0],
+        ['Gearbox',     'Gearbox needed',                       'Options: yes / no',                                'yes',             'yes'],
+        ['Gearbox',     'GB ratio',                             'Gearbox ratio',                                     3,                 3],
+        ['Gearbox',     'GB efficiency',                        'Mechanical efficiency (0–1)',                        0.95,              0.95],
+        ['Gearbox',     'GB no-load torque (Nm)',               'No-load running torque',                            0.07,              0.07],
+        ['Gearbox',     'GB inertia (kg·m²)',                   'Reflected inertia at input shaft',                  0,                 0],
+        ['Gearbox',     'GB backlash (arcmin)',                  'Gearbox backlash',                                  0,                 0],
       ] : []),
-      // ── Project / Operating Conditions ────────────────────────────────────
-      ['Safety factor (%)',                         'Design safety factor (%)',                         20,               20],
-      ['Cycle time (s)',                            'Total machine cycle time',                         7,                7],
-      ['Op. time (s)',                              'Servo operating time per cycle',                   2.6,              2.6],
-      ['Shifts/day',                               'Number of shifts per day',                         3,                3],
-      ['Hours/shift',                              'Working hours per shift',                          7,                7],
-      ['Days/week',                                'Working days per week',                            6,                6],
-      ['Service life (yrs)',                       'Required machine service life',                    10,               10],
-      ['Accuracy (µm)',                            'Required positioning accuracy',                    20,               20],
+      // ── Operating Conditions ──────────────────────────────────────────────
+      ['Operating',     'Safety factor (%)',                    'Design safety margin (%)',                          20,                20],
+      ['Operating',     'Cycle time (s)',                       'Total machine cycle time',                          7,                 7],
+      ['Operating',     'Op. time (s)',                         'Servo operating time per cycle',                    2.6,               2.6],
+      ['Operating',     'Shifts per day',                       'Number of production shifts per day',               3,                 3],
+      ['Operating',     'Hours per shift',                      'Working hours per shift',                           7,                 7],
+      ['Operating',     'Days per week',                        'Working days per week',                             6,                 6],
+      ['Operating',     'Expected service life (yrs)',          'Required machine service life in years',            10,                10],
+      ['Operating',     'Accuracy (µm)',                        'Required positioning accuracy',                     20,                20],
     ];
 
-    const HELPER_LABELS = new Set([
-      'Fixed side support block drag torque (Nm)',
-      'Support side support block drag torque (Nm)',
-      'Bearing drag torque (Nm)',
-    ]);
+    const GROUP_COLOURS = {
+      'General':       { bg: '334155', fg: 'FFFFFF' },
+      'Motion Step':   { bg: '1d4ed8', fg: 'FFFFFF' },
+      'LM Guide':      { bg: '15803d', fg: 'FFFFFF' },
+      'Counterbalance':{ bg: 'c2410c', fg: 'FFFFFF' },
+      'Ball Screw':    { bg: 'a16207', fg: 'FFFFFF' },
+      'Parallel Kit':  { bg: '7c3aed', fg: 'FFFFFF' },
+      'Gearbox':       { bg: '4b5563', fg: 'FFFFFF' },
+      'Operating':     { bg: '0f766e', fg: 'FFFFFF' },
+    };
 
     const templateRows = [
-      ['Project Input Template', null, null, null],
+      ['Project Input Template', null, null, null, null],
       [],
-      ['Parameter', 'Notes', 'OP10 / App-1', 'OP20 / App-2'],
+      ['Group', 'Parameter', 'Notes', 'OP10 / App-1', 'OP20 / App-2'],
       ...rows,
     ];
     const ws = XLSX.utils.aoa_to_sheet(templateRows);
@@ -1202,44 +1246,59 @@ function autoSelectMotor(st) {
     const titleStyle  = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 14 }, fill: { patternType: 'solid', fgColor: { rgb: '1F3864' } }, alignment: { horizontal: 'center' } };
     const headerStyle = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { patternType: 'solid', fgColor: { rgb: '4472C4' } } };
     const inputStyle  = { fill: { patternType: 'solid', fgColor: { rgb: 'E2F0D9' } }, border: { top: { style: 'thin', color: { rgb: 'A9D18E' } }, bottom: { style: 'thin', color: { rgb: 'A9D18E' } }, left: { style: 'thin', color: { rgb: 'A9D18E' } }, right: { style: 'thin', color: { rgb: 'A9D18E' } } } };
-    const helperStyle = { fill: { patternType: 'solid', fgColor: { rgb: 'FFF2CC' } }, font: { italic: true } };
     const noteStyle   = { font: { italic: true, color: { rgb: '595959' } }, fill: { patternType: 'solid', fgColor: { rgb: 'F2F2F2' } } };
+    const labelStyle  = { font: { bold: false } };
 
-    ['A1','B1','C1','D1'].forEach(c => { if (ws[c]) ws[c].s = titleStyle; });
-    ['A3','B3','C3','D3'].forEach(c => { if (ws[c]) ws[c].s = headerStyle; });
+    // Build group merges for column A — merge consecutive rows with the same group name
+    // Data rows start at 0-based Excel row 3 (= spreadsheet row 4, after title/blank/header)
+    const groupMerges = [];
+    let gStart = 3, gName = rows[0]?.[0];
+    rows.forEach((row, i) => {
+      if (row[0] !== gName) {
+        // Previous group ended at rows[i-1] → 0-based row = (i-1)+3 = i+2
+        groupMerges.push({ s: { r: gStart, c: 0 }, e: { r: i + 2, c: 0 } });
+        gName = row[0];
+        gStart = i + 3; // this group's first 0-based row
+      }
+    });
+    // Close last group: last row is rows[rows.length-1] → 0-based = (rows.length-1)+3 = rows.length+2
+    groupMerges.push({ s: { r: gStart, c: 0 }, e: { r: rows.length + 2, c: 0 } });
+
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 4 } },  // Title spans A1:E1
+      ...groupMerges,
+    ];
+    ['A1','B1','C1','D1','E1'].forEach(c => { if (ws[c]) ws[c].s = titleStyle; });
+    ['A3','B3','C3','D3','E3'].forEach(c => { if (ws[c]) ws[c].s = headerStyle; });
+
     rows.forEach((row, i) => {
       const r = i + 4;
-      const isHelper = HELPER_LABELS.has(row[0]);
-      if (ws[`B${r}`]) ws[`B${r}`].s = noteStyle;
-      if (ws[`C${r}`]) ws[`C${r}`].s = isHelper ? helperStyle : inputStyle;
-      if (ws[`D${r}`]) ws[`D${r}`].s = isHelper ? helperStyle : inputStyle;
+      const group = row[0];
+      const gc = GROUP_COLOURS[group] || { bg: '475569', fg: 'FFFFFF' };
+      const groupStyle = {
+        font: { bold: true, color: { rgb: gc.fg } },
+        fill: { patternType: 'solid', fgColor: { rgb: gc.bg } },
+        alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+      };
+      if (ws[`A${r}`]) ws[`A${r}`].s = groupStyle;
+      if (ws[`B${r}`]) ws[`B${r}`].s = labelStyle;
+      if (ws[`C${r}`]) ws[`C${r}`].s = noteStyle;
+      if (ws[`D${r}`]) ws[`D${r}`].s = inputStyle;
+      if (ws[`E${r}`]) ws[`E${r}`].s = inputStyle;
     });
 
-    // Excel formulas for auto-calculated bearing drag cells (both station columns)
-    const findRow = label => { const idx = rows.findIndex(r => r[0] === label); return idx >= 0 ? idx + 4 : null; };
-    const rFixedN   = findRow('No. of fixed side support blocks');
-    const rFixedB   = findRow('Fixed side drag torque per block (Nm)');
-    const rFixedT   = findRow('Fixed side support block drag torque (Nm)');
-    const rSupportN = findRow('No. of support side support blocks');
-    const rSupportB = findRow('Support side drag torque per block (Nm)');
-    const rSupportT = findRow('Support side support block drag torque (Nm)');
-    const rBearing  = findRow('Bearing drag torque (Nm)');
-    ['C','D'].forEach(col => {
-      if (rFixedT && rFixedN && rFixedB)       ws[`${col}${rFixedT}`]   = { t:'n', f:`${col}${rFixedN}*${col}${rFixedB}`,   v:0, s:helperStyle };
-      if (rSupportT && rSupportN && rSupportB) ws[`${col}${rSupportT}`] = { t:'n', f:`${col}${rSupportN}*${col}${rSupportB}`,v:0, s:helperStyle };
-      if (rBearing && rFixedT && rSupportT)    ws[`${col}${rBearing}`]  = { t:'n', f:`${col}${rFixedT}+${col}${rSupportT}`, v:0, s:helperStyle };
-    });
-
-    const viewRowByHeader = new Map(rows.map((row, i) => [row[0], i + 4]));
+    const rowMap = new Map(rows.map((row, i) => [row[1], i + 4]));
     ws['!dataValidation'] = [
-      { type:'list', sqref:`C${viewRowByHeader.get('Ext. force direction')}`,        formula1:'"opposing,aiding"' },
-      { type:'list', sqref:`C${viewRowByHeader.get('Payload movement direction')}`,  formula1:'"against gravity,with gravity"' },
-      { type:'list', sqref:`C${viewRowByHeader.get('Counterbalance exists')}`,       formula1:'"yes,no"' },
-      { type:'list', sqref:`C${viewRowByHeader.get('Parallel Kit needed')}`,         formula1:'"Yes,No"' },
-      { type:'list', sqref:`C${viewRowByHeader.get('Gearbox needed')}`,              formula1:'"Yes,No"' },
-    ].filter(v => v.sqref && !v.sqref.includes('undefined'));
+      { type:'list', sqref:`D${rowMap.get('Ext. force direction')}:E${rowMap.get('Ext. force direction')}`,                         formula1:'"opposing,aiding"' },
+      { type:'list', sqref:`D${rowMap.get('Payload movement direction')}:E${rowMap.get('Payload movement direction')}`,             formula1:'"against gravity,with gravity"' },
+      { type:'list', sqref:`D${rowMap.get('LM guide present')}:E${rowMap.get('LM guide present')}`,                                 formula1:'"yes,no"' },
+      { type:'list', sqref:`D${rowMap.get('Counterbalance present')}:E${rowMap.get('Counterbalance present')}`,                     formula1:'"yes,no"' },
+      { type:'list', sqref:`D${rowMap.get('BS material')}:E${rowMap.get('BS material')}`,                                           formula1:'"steel,stainless,aluminum"' },
+      { type:'list', sqref:`D${rowMap.get('Parallel Kit needed')}:E${rowMap.get('Parallel Kit needed')}`,                           formula1:'"yes,no"' },
+      { type:'list', sqref:`D${rowMap.get('Gearbox needed')}:E${rowMap.get('Gearbox needed')}`,                                     formula1:'"yes,no"' },
+    ].filter(v => v.sqref && !v.sqref.includes('undefined') && !v.sqref.includes('null'));
 
-    ws['!cols'] = [{ wch: 46 }, { wch: 48 }, { wch: 18 }, { wch: 18 }];
+    ws['!cols'] = [{ wch: 16 }, { wch: 38 }, { wch: 44 }, { wch: 18 }, { wch: 18 }];
 
     const wb = { SheetNames:['User input'], Sheets:{ 'User input': ws } };
     const buf = XLSX.write(wb, { bookType:'xlsx', type:'array', cellStyles:true });

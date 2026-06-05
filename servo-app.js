@@ -8,10 +8,10 @@ const DEFAULT_STATE = {
   project_operating_time: 2.6,
   project_service_life: 10,
   project_accuracy: 10,
-  dwell_time: 0.1,
   acc_pct: 25,
+  has_lm_guide: 1,
   steps: [
-    { label: 'Step 1', stroke: 15, move_time: 1.0,
+    { label: 'Step 1', stroke: 15, move_time: 1.0, dwell_time: 0.1,
       external_force: 250, external_force_dir: 'opposing',
       load_mass: 1.0, movement_dir: 'against_gravity', tilt_deg: 45,
       acceleration_time: null, deceleration_time: null }
@@ -183,150 +183,153 @@ function getMotionProfileDisplayOptions() {
 }
 
 function downloadExcelTemplate() {
+  console.log('[CV] downloadExcelTemplate v6 called');
   const step = (Array.isArray(state.steps) && state.steps[0]) ? state.steps[0] : DEFAULT_STATE.steps[0];
   const bearingDrag = getBearingDragComponents();
 
-  // Topology flags — use saved state first, fall back to project config
   const ctx = (typeof Projects !== 'undefined') ? Projects.getContext() : null;
   const projCfg = (ctx && typeof Projects !== 'undefined') ? (Projects.get(ctx.projectId)?.config || null) : null;
-  const showLM = projCfg ? projCfg.has_lm_guide : true;
-  const showCB = Number(state.has_counterbalance) !== 0 ||
-                 (projCfg ? (projCfg.counterbalance && projCfg.counterbalance !== 'none') : true);
-  const showPK = Number(state.has_parallel_kit) !== 0 ||
-                 (projCfg ? projCfg.has_parallel_kit : true);
-  const showGB = Number(state.has_gearbox) !== 0 ||
-                 (projCfg ? projCfg.has_gearbox : true);
+  const showCB = Number(state.has_counterbalance) !== 0 || (projCfg ? (projCfg.counterbalance && projCfg.counterbalance !== 'none') : true);
+  const showPK = Number(state.has_parallel_kit)   !== 0 || (projCfg ? projCfg.has_parallel_kit : true);
+  const showGB = Number(state.has_gearbox)         !== 0 || (projCfg ? projCfg.has_gearbox : true);
 
-  // Layout: A=Parameter (with units), B=Notes, C=Station 1 values
-  const rows_ = [
-    ['Stn no',                                    'Station identifier',                              'OP10'],
-    ['Appl',                                      'Application name',                                'App-1'],
-    ['Stroke (mm)',                                'Linear travel distance',                          step.stroke ?? 0],
-    ['Move time (s)',                              'Total move time (accel + const + decel)',          step.move_time ?? 0],
-    ['Dwell time (s)',                             'Wait time at end of stroke',                      state.dwell_time ?? 0.1],
-    ['Acceleration time (s)',                      'Accel phase duration (leave blank to use Acc%)',  step.acceleration_time ?? ''],
-    ['Deceleration time (s)',                      'Decel phase duration (leave blank to use Dec%)',  step.deceleration_time ?? ''],
-    ['External force (N)',                         'Process / payload force on the axis',             step.external_force ?? 0],
-    ['Ext. force direction',                       'Options: opposing / aiding',                      step.external_force_dir || 'opposing'],
-    ['Payload movement direction',                 'Options: against gravity / with gravity',         step.movement_dir || 'against gravity'],
-    ['Payload mass (kg)',                          'Mass of payload being moved',                     step.load_mass ?? 0],
-    ['Carriage mass (kg)',                         'LM guide carriage / saddle mass',                 state.guide_mass ?? 0],
-    ['Guide block mass per block (kg)',            'Mass of each LM guide carriage block',            state.guide_block_mass ?? 0.2],
-    ['No. carriage blocks',                        'Number of LM guide carriage blocks',              state.guide_n_blocks ?? 1],
-    ['Inclination angle (°)',                      '0 = horizontal, 90 = vertical',                   step.tilt_deg ?? 0],
-    // LM Guide rows (conditional)
-    ...(showLM ? [
-      ['Friction coeff LM guide (μ)',              'Friction coefficient of LM guide',                state.mu ?? 0],
-      ['Friction Force (N)',                       'Friction force per carriage block (N)',            state.guide_force ?? 0],
-    ] : []),
-    // Counterbalance rows (conditional)
+  // Each row: [Group, Parameter, Notes, Value]
+  const rows = [
+    ['General',        'Stn no',                                     'Station identifier',                              'OP10'],
+    ['General',        'Appl',                                       'Application name',                                'App-1'],
+    ['Motion Step',    'Stroke (mm)',                                 'Linear travel distance',                          step.stroke ?? 0],
+    ['Motion Step',    'Move time (s)',                               'Total move time = acc + constant speed + dec',    step.move_time ?? 0],
+    ['Motion Step',    'Acceleration time (s)',                       'Accel phase duration',                            step.acceleration_time ?? ''],
+    ['Motion Step',    'Deceleration time (s)',                       'Decel phase duration',                            step.deceleration_time ?? ''],
+    ['Motion Step',    'Constant speed time (s)',                     'Auto: Move time - Acc - Dec',                     ''],
+    ['Motion Step',    'Dwell time (s)',                              'Wait time at end of stroke',                      step.dwell_time ?? 0],
+    ['Motion Step',    'External force (N)',                          'Process / payload force on the axis',             step.external_force ?? 0],
+    ['Motion Step',    'Ext. force direction',                        'Options: opposing / aiding',                      step.external_force_dir || 'opposing'],
+    ['Motion Step',    'Payload movement direction',                  'Options: against gravity / with gravity',         step.movement_dir || 'against gravity'],
+    ['Motion Step',    'Payload mass (kg)',                           'Mass of payload being moved',                     step.load_mass ?? 0],
+    ['Motion Step',    'Inclination angle (deg)',                     '0 = horizontal, 90 = vertical',                   step.tilt_deg ?? 0],
+    ['LM Guide',       'LM Guide present',                           'Options: Yes / No',                               Number(state.has_lm_guide) ? 'Yes' : 'No'],
+    ['LM Guide',       'Fixture / carriage mass (kg)',               'Tooling plate + LM guide carriage mass',          state.guide_mass ?? 0],
+    ['LM Guide',       'Guide block mass per block (kg)',            'Mass of each LM guide carriage block',            state.guide_block_mass ?? 0.2],
+    ['LM Guide',       'No. carriage blocks',                        'Number of LM guide carriage blocks',              state.guide_n_blocks ?? 1],
+    ['LM Guide',       'Friction Force per block (N)',               'Friction force per carriage block',               state.guide_force ?? 0],
+    ['LM Guide',       'Max withstand force (N)',                    'Maximum dynamic load rating of the LM guide',     state.guide_max_force ?? 0],
+    ['LM Guide',       'Service life @100% load (km)',               'Rated travel life at 100% load from catalog',     state.guide_service_life ?? 0],
+    ['Counterbalance', 'Counterbalance present',                     'Options: Yes / No',                               Number(state.has_counterbalance) ? 'Yes' : 'No'],
     ...(showCB ? [
-      ['Linear bush friction force (counterbalance)', 'Friction force per counterbalance bushing (N)',  state.cb_bushing_friction_force ?? 0],
-      ['number of linear bushings (counterbalance)', 'No. of counterbalance linear bushings',           state.cb_n_bushings ?? 0],
-      ['Counterbalance exists',                    'Options: yes / no',                               Number(state.has_counterbalance) ? 'yes' : 'no'],
-      ['CB mass (kg)',                             'Counterbalance mass',                             state.cb_mass ?? 0],
-      ['CB inclination (°)',                       'Counterbalance inclination angle',                 state.cb_angle_deg ?? 90],
-      ['CB friction coeff (μ)',                    'Counterbalance guide friction coefficient',        state.cb_mu ?? 0],
+      ['Counterbalance', 'CB mass (kg)',                             'Counterbalance mass',                             state.cb_mass ?? 0],
+      ['Counterbalance', 'CB inclination (deg)',                     'Counterbalance inclination angle',                state.cb_angle_deg ?? 90],
+      ['Counterbalance', 'CB friction coeff',                        'Counterbalance guide friction coefficient',       state.cb_mu ?? 0],
+      ['Counterbalance', 'Linear bush friction force (N)',           'Friction force per counterbalance bushing',       state.cb_bushing_friction_force ?? 0],
+      ['Counterbalance', 'Number of linear bushings',               'No. of counterbalance linear bushings',           state.cb_n_bushings ?? 0],
     ] : []),
-    ['BS lead (mm)',                               'Ball screw lead / pitch',                          state.bs_pitch ?? 2],
-    ['BS diameter (mm)',                           'Ball screw shaft diameter',                        state.bs_dia ?? 6],
-    ['BS length (mm)',                             'Ball screw shaft length',                          state.bs_length ?? 500],
-    ['BS material',                               'Options: steel / stainless / aluminum',            state.bs_material ?? 'steel'],
-    ['BS efficiency',                              'Ball screw mechanical efficiency (0–1)',           state.bs_efficiency ?? 0.98],
-    ['BS nut mass (kg)',                           'Ball screw nut mass (from catalog)',               state.bs_nut_mass ?? 0.052],
-    ['BS preload torque (Nm)',                     'Preload torque (direct input, from catalog)',      state.bs_preload_torque ?? 0],
-    ['No. of fixed side support blocks',           'No. of fixed-end bearing support blocks',         state.bs_n_fixed_blocks ?? 1],
-    ['Fixed side drag torque per block (Nm)',      'Drag torque per fixed-side block (from catalog)', state.bs_fixed_drag_axial ?? 0],
-    ['Fixed side support block drag torque (Nm)',  'Auto-calculated: No. blocks × drag/block',        bearingDrag.fixed],
-    ['No. of support side support blocks',         'No. of floating-end bearing support blocks',      state.bs_n_support_blocks ?? 1],
-    ['Support side drag torque per block (Nm)',    'Drag torque per support-side block (from catalog)', state.bs_support_drag_axial ?? 0],
-    ['Support side support block drag torque (Nm)', 'Auto-calculated: No. blocks × drag/block',      bearingDrag.support],
-    ['Bearing drag torque (Nm)',                   'Auto-calculated: fixed total + support total',    bearingDrag.total],
-    // Parallel Kit rows (conditional)
+    ['Ball Screw',     'BS lead (mm/rev)',                           'Ball screw lead per revolution',                  state.bs_pitch ?? 2],
+    ['Ball Screw',     'BS diameter (mm)',                           'Ball screw shaft diameter',                       state.bs_dia ?? 6],
+    ['Ball Screw',     'BS length (mm)',                             'Ball screw shaft length',                         state.bs_length ?? 500],
+    ['Ball Screw',     'BS material',                                'Options: steel / stainless / aluminum',           state.bs_material ?? 'steel'],
+    ['Ball Screw',     'BS efficiency (0-1)',                        'Ball screw mechanical efficiency',                state.bs_efficiency ?? 0.98],
+    ['Ball Screw',     'BS nut mass (kg)',                           'Ball screw nut mass from catalog',                state.bs_nut_mass ?? 0.052],
+    ['Ball Screw',     'BS preload torque (Nm)',                     'Preload torque from catalog',                     state.bs_preload_torque ?? 0],
+    ['Ball Screw',     'No. of fixed side support blocks',          'Fixed-end bearing support blocks',                state.bs_n_fixed_blocks ?? 1],
+    ['Ball Screw',     'Fixed side drag torque per block (Nm)',     'Drag torque per fixed-side block from catalog',   state.bs_fixed_drag_axial ?? 0],
+    ['Ball Screw',     'No. of support side support blocks',        'Floating-end bearing support blocks',             state.bs_n_support_blocks ?? 1],
+    ['Ball Screw',     'Support side drag torque per block (Nm)',   'Drag torque per support-side block from catalog', state.bs_support_drag_axial ?? 0],
+    ['Ball Screw',     'Max permitted speed (rpm)',                  'Max allowable ball screw rotational speed',       state.bs_max_speed ?? 0],
+    ['Ball Screw',     'Max permitted torque (Nm)',                  'Max allowable input torque at ball screw',        state.bs_max_torque ?? 0],
+    ['Ball Screw',     'Repetition accuracy (+/- um)',               'Ball screw positional repeatability',             state.bs_repetition_accuracy ?? 0],
     ...(showPK ? [
-      ['Parallel Kit needed',                      'Options: Yes / No',                               Number(state.has_parallel_kit) ? 'Yes' : 'No'],
-      ['PK ratio',                                 'Parallel kit gear ratio',                         state.pk_ratio ?? 1],
-      ['PK no-load (Nm)',                          'Parallel kit no-load running torque',             state.pk_no_load_torque ?? 0],
-      ['PK inertia (kg·m²)',                      'Parallel kit moment of inertia',                  state.pk_inertia ?? 0],
-      ['PK max torque (Nm)',                       'Parallel kit max transferable torque',             state.pk_max_torque ?? 0],
-      ['PK max speed (rpm)',                       'Parallel kit max input speed',                    state.pk_max_speed ?? 0],
+      ['Parallel Kit',  'Parallel Kit needed',                       'Options: Yes / No',                               Number(state.has_parallel_kit) ? 'Yes' : 'No'],
+      ['Parallel Kit',  'PK ratio',                                  'Parallel kit gear ratio',                         state.pk_ratio ?? 1],
+      ['Parallel Kit',  'PK no-load torque (Nm)',                    'Parallel kit no-load running torque',             state.pk_no_load_torque ?? 0],
+      ['Parallel Kit',  'PK inertia (kg.m2)',                        'Parallel kit moment of inertia',                  state.pk_inertia ?? 0],
+      ['Parallel Kit',  'PK max torque (Nm)',                        'Parallel kit max transferable torque',             state.pk_max_torque ?? 0],
+      ['Parallel Kit',  'PK max speed (rpm)',                        'Parallel kit max input speed',                    state.pk_max_speed ?? 0],
     ] : []),
-    // Gearbox rows (conditional)
     ...(showGB ? [
-      ['Gearbox needed',                           'Options: Yes / No',                               Number(state.has_gearbox) ? 'Yes' : 'No'],
-      ['GB ratio',                                 'Gearbox ratio',                                   state.gb_ratio ?? 1],
-      ['GB efficiency',                            'Gearbox mechanical efficiency (0–1)',              state.gb_efficiency ?? 0],
-      ['GB no-load (Nm)',                          'Gearbox no-load running torque',                  state.gb_no_load_torque ?? 0],
-      ['GB inertia (kg·m²)',                      'Gearbox reflected inertia',                       state.gb_inertia ?? 0],
-      ['Backlash (arcmin)',                        'Gearbox backlash',                                state.gb_backlash ?? 0],
+      ['Gearbox',       'Gearbox needed',                            'Options: Yes / No',                               Number(state.has_gearbox) ? 'Yes' : 'No'],
+      ['Gearbox',       'GB ratio',                                  'Gearbox ratio',                                   state.gb_ratio ?? 1],
+      ['Gearbox',       'GB efficiency (0-1)',                       'Gearbox mechanical efficiency',                   state.gb_efficiency ?? 0],
+      ['Gearbox',       'GB no-load torque (Nm)',                    'Gearbox no-load running torque',                  state.gb_no_load_torque ?? 0],
+      ['Gearbox',       'GB inertia (kg.m2)',                        'Gearbox reflected inertia',                       state.gb_inertia ?? 0],
+      ['Gearbox',       'GB backlash (arcmin)',                      'Gearbox backlash',                                state.gb_backlash ?? 0],
     ] : []),
-    ['Safety factor (%)',                          'Design safety factor (%)',                         state.safety_factor ?? 20],
-    ['Cycle time (s)',                             'Total machine cycle time',                         state.project_total_cycle ?? 7],
-    ['Op. time (s)',                               'Servo operating time per cycle',                   state.project_operating_time ?? 2.6],
-    ['Shifts/day',                                 'Number of shifts per day',                         state.project_shifts ?? 3],
-    ['Hours/shift',                                'Working hours per shift',                          state.project_hours_shift ?? 7],
-    ['Days/week',                                  'Working days per week',                            state.project_days_week ?? 6],
-    ['Service life (yrs)',                         'Required machine service life',                    state.project_service_life ?? 10],
-    ['Accuracy (µm)',                              'Required positioning accuracy',                    state.project_accuracy ?? 20],
+    ['Operating Conditions', 'Safety factor (%)',                    'Design safety factor',                            state.safety_factor ?? 20],
+    ['Operating Conditions', 'Cycle time (s)',                       'Total machine cycle time',                        state.project_total_cycle ?? 7],
+    ['Operating Conditions', 'Axis on-time per cycle (s)',           'Servo operating time per cycle',                  state.project_operating_time ?? 2.6],
+    ['Operating Conditions', 'Shifts per day',                       'Number of shifts per day',                        state.project_shifts ?? 3],
+    ['Operating Conditions', 'Hours per shift',                      'Working hours per shift',                         state.project_hours_shift ?? 7],
+    ['Operating Conditions', 'Days per week',                        'Working days per week',                           state.project_days_week ?? 6],
+    ['Operating Conditions', 'Service life (yrs)',                   'Required machine service life',                   state.project_service_life ?? 10],
+    ['Operating Conditions', 'Accuracy required (um)',               'Required positioning accuracy',                   state.project_accuracy ?? 20],
   ];
+
   const data = [
-    ['Project Input Template', null, null],
-    [],
-    ['Parameter', 'Notes', 'OP10 / App-1'],
-    ...rows_,
+    ['Project Input Template', '', '', ''],
+    ['', '', '', ''],
+    ['Group', 'Parameter', 'Notes', 'OP10 / App-1'],
+    ...rows,
   ];
 
   const ws = XLSX.utils.aoa_to_sheet(data);
-  ws['!cols'] = [{ wch: 46 }, { wch: 48 }, { wch: 18 }];
+  ws['!cols'] = [{ wch: 20 }, { wch: 44 }, { wch: 46 }, { wch: 18 }];
 
+  // Styles
   const titleStyle  = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 14 }, fill: { patternType: 'solid', fgColor: { rgb: '1F3864' } }, alignment: { horizontal: 'center' } };
   const headerStyle = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { patternType: 'solid', fgColor: { rgb: '2F75B5' } } };
-  const inputStyle  = { fill: { patternType: 'solid', fgColor: { rgb: 'E2F0D9' } }, border: { top: { style: 'thin', color: { rgb: 'A9D18E' } }, bottom: { style: 'thin', color: { rgb: 'A9D18E' } }, left: { style: 'thin', color: { rgb: 'A9D18E' } }, right: { style: 'thin', color: { rgb: 'A9D18E' } } } };
-  const helperStyle = { fill: { patternType: 'solid', fgColor: { rgb: 'FFF2CC' } }, font: { italic: true } };
+  const paramStyle  = { font: { color: { rgb: '1a1a1a' } }, fill: { patternType: 'solid', fgColor: { rgb: 'F8FAFC' } } };
   const noteStyle   = { font: { italic: true, color: { rgb: '595959' } }, fill: { patternType: 'solid', fgColor: { rgb: 'F2F2F2' } } };
+  const inputStyle  = { fill: { patternType: 'solid', fgColor: { rgb: 'E2F0D9' } } };
+  const helperStyle = { fill: { patternType: 'solid', fgColor: { rgb: 'FFF2CC' } }, font: { italic: true } };
 
-  ['A1', 'B1', 'C1'].forEach(c => { if (ws[c]) ws[c].s = titleStyle; });
-  ['A3', 'B3', 'C3'].forEach(c => { if (ws[c]) ws[c].s = headerStyle; });
+  const GROUP_COLOURS = {
+    'General':              { bg: 'D6DCE4', fg: '1F3864' },
+    'Motion Step':          { bg: 'DDEBF7', fg: '1F3864' },
+    'LM Guide':             { bg: 'E2EFDA', fg: '375623' },
+    'Counterbalance':       { bg: 'FCE4D6', fg: '7B2C14' },
+    'Ball Screw':           { bg: 'FFF2CC', fg: '7D5700' },
+    'Parallel Kit':         { bg: 'EAD1DC', fg: '6B1F3E' },
+    'Gearbox':              { bg: 'D9D9D9', fg: '333333' },
+    'Operating Conditions': { bg: 'D6E4BC', fg: '375623' },
+  };
 
-  const HELPER_LABELS = new Set([
-    'Fixed side support block drag torque (Nm)',
-    'Support side support block drag torque (Nm)',
-    'Bearing drag torque (Nm)',
-  ]);
+  const HELPER_PARAMS = new Set(['Constant speed time (s)']);
+
+  ['A1','B1','C1','D1'].forEach(c => { if (ws[c]) ws[c].s = titleStyle; });
+  ['A3','B3','C3','D3'].forEach(c => { if (ws[c]) ws[c].s = headerStyle; });
+
   data.forEach((row, i) => {
-    if (i < 3 || !row[0]) return;
-    const rowNum = i + 1;
-    const isHelper = HELPER_LABELS.has(row[0]);
-    if (ws[`B${rowNum}`]) ws[`B${rowNum}`].s = noteStyle;
-    if (ws[`C${rowNum}`]) ws[`C${rowNum}`].s = isHelper ? helperStyle : inputStyle;
+    if (i < 3 || !row[1]) return;
+    const r = i + 1;
+    const grp = row[0] || '';
+    const pal = GROUP_COLOURS[grp] || { bg: 'D9E1F2', fg: '1F3864' };
+    const grpStyle = {
+      font:      { bold: true, color: { rgb: pal.fg } },
+      fill:      { patternType: 'solid', fgColor: { rgb: pal.bg } },
+      alignment: { horizontal: 'center', wrapText: true },
+    };
+    if (ws[`A${r}`]) ws[`A${r}`].s = grpStyle;
+    if (ws[`B${r}`]) ws[`B${r}`].s = paramStyle;
+    if (ws[`C${r}`]) ws[`C${r}`].s = noteStyle;
+    if (ws[`D${r}`]) ws[`D${r}`].s = HELPER_PARAMS.has(row[1]) ? helperStyle : inputStyle;
   });
 
-  // Excel formulas for bearing drag totals (yellow helper cells) — values in col C
-  const findRow = (label) => { const idx = data.findIndex(r => r[0] === label); return idx >= 0 ? idx + 1 : null; };
-  const rFixedN   = findRow('No. of fixed side support blocks');
-  const rFixedB   = findRow('Fixed side drag torque per block (Nm)');
-  const rFixedT   = findRow('Fixed side support block drag torque (Nm)');
-  const rSupportN = findRow('No. of support side support blocks');
-  const rSupportB = findRow('Support side drag torque per block (Nm)');
-  const rSupportT = findRow('Support side support block drag torque (Nm)');
-  const rBearing  = findRow('Bearing drag torque (Nm)');
+  // Formula: Constant speed time = Move time - Acc - Dec
+  const findR = (param) => { const i = data.findIndex(r => r[1] === param); return i >= 0 ? i + 1 : null; };
+  const rMove = findR('Move time (s)'), rAcc = findR('Acceleration time (s)'), rDec = findR('Deceleration time (s)'), rConst = findR('Constant speed time (s)');
+  if (rConst && rMove && rAcc && rDec)
+    ws[`D${rConst}`] = { t: 'n', f: `MAX(0,D${rMove}-IF(ISNUMBER(D${rAcc}),D${rAcc},0)-IF(ISNUMBER(D${rDec}),D${rDec},0))`, v: 0, s: helperStyle };
 
-  if (rFixedT && rFixedN && rFixedB)   ws[`C${rFixedT}`]   = { t: 'n', f: `C${rFixedN}*C${rFixedB}`,   v: bearingDrag.fixed,   s: helperStyle };
-  if (rSupportT && rSupportN && rSupportB) ws[`C${rSupportT}`] = { t: 'n', f: `C${rSupportN}*C${rSupportB}`, v: bearingDrag.support, s: helperStyle };
-  if (rBearing && rFixedT && rSupportT) ws[`C${rBearing}`]  = { t: 'n', f: `C${rFixedT}+C${rSupportT}`, v: bearingDrag.total,   s: helperStyle };
-
-  const workbook = { SheetNames: ['User input'], Sheets: { 'User input': ws } };
-  const workbookArray = XLSX.write(workbook, { bookType: 'xlsx', type: 'array', cellStyles: true });
-  const blob = new Blob([workbookArray], { type: 'application/octet-stream' });
+  const wb = { SheetNames: ['User input'], Sheets: { 'User input': ws } };
+  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array', cellStyles: true });
+  const blob = new Blob([buf], { type: 'application/octet-stream' });
   const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = 'titan-project-template.xlsx';
-  document.body.appendChild(anchor);
-  anchor.click();
-  document.body.removeChild(anchor);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'titan-project-template.xlsx';
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
 
 function formatNumber(value, digits = 2) {
   return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(digits) : '—';
@@ -348,8 +351,8 @@ function normalizeState() {
   state.project_operating_time = Math.max(0, Number(state.project_operating_time) || 0);
   state.project_service_life = Math.max(0, Number(state.project_service_life) || 0);
   state.project_accuracy = Math.max(0, Number(state.project_accuracy) || 0);
-  state.dwell_time = Math.max(0, Number(state.dwell_time) || 0);
   state.acc_pct = Math.min(80, Math.max(1, Number(state.acc_pct) || 25));
+  state.has_lm_guide = Number(state.has_lm_guide) === 0 ? 0 : 1;
   state.has_parallel_kit = Number(state.has_parallel_kit) === 0 ? 0 : 1;
   state.has_gearbox = Number(state.has_gearbox) === 0 ? 0 : 1;
   state.gb_ratio_user_selected = !!state.gb_ratio_user_selected;
@@ -357,10 +360,14 @@ function normalizeState() {
   if (!Array.isArray(state.steps) || state.steps.length === 0) {
     state.steps = [{ label: 'Step 1', stroke: 15, move_time: 1.0, external_force: 250, load_mass: 1.0, tilt_deg: 45 }];
   }
+  // Migrate legacy global dwell_time to per-step
+  const legacyDwell = Number(state.dwell_time) || 0;
+  delete state.dwell_time;
   state.steps = state.steps.slice(0, 8).map((step, index) => ({
     label: String(step.label || step.application || `Step ${index + 1}`),
     stroke: Math.max(0, Number(step.stroke) || 0),
     move_time: Math.max(0.05, Number(step.move_time) || 0.05),
+    dwell_time: Math.max(0, Number(step.dwell_time) || legacyDwell || 0),
     acceleration_time: Number.isFinite(Number(step.acceleration_time)) && Number(step.acceleration_time) > 0 ? Number(step.acceleration_time) : null,
     deceleration_time: Number.isFinite(Number(step.deceleration_time)) && Number(step.deceleration_time) > 0 ? Number(step.deceleration_time) : null,
     external_force: Number(step.external_force) || 0,
@@ -1146,7 +1153,15 @@ function renderMovementSteps() {
   if (!container) return;
   const steps = Array.isArray(state.steps) && state.steps.length ? state.steps : [{ label: 'Step 1', stroke: 15, move_time: 1.0, external_force: 250, load_mass: 1.0, tilt_deg: 45 }];
 
-  container.innerHTML = steps.map((step, index) => `
+  container.innerHTML = steps.map((step, index) => {
+    const tAcc = step.acceleration_time != null ? Number(step.acceleration_time) : 0;
+    const tDec = step.deceleration_time != null ? Number(step.deceleration_time) : 0;
+    const tMove = Number(step.move_time) || 0;
+    const accDecInvalid = (tAcc + tDec) > tMove + 1e-9;
+    const tConst = Math.max(0, tMove - tAcc - tDec);
+    const invBorder = accDecInvalid ? 'border-color:#ef4444;' : '';
+    const invBg     = accDecInvalid ? 'background:#fef2f2;'   : '';
+    return `
     <div class="step-card" data-step="${index}" style="
       border:1px solid var(--border);border-radius:12px;padding:16px;
       margin-top:14px;background:var(--surface-strong);
@@ -1157,64 +1172,101 @@ function renderMovementSteps() {
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
         <div class="field-row">
-          <label>Label
+          <label data-tip="Name or identifier for this motion step">Label
             <input data-step="${index}" data-field="label" type="text" value="${step.label || ''}" style="padding:8px 10px;font-size:13px;" />
           </label>
         </div>
         <div class="field-row">
-          <label>Ext. force (N)
+          <label data-tip="External process or tooling force acting on the load along the axis of motion (N)">Ext. force (N)
             <input data-step="${index}" data-field="external_force" type="number" step="1" value="${step.external_force}" style="padding:8px 10px;font-size:13px;" />
           </label>
         </div>
         <div class="field-row">
-          <label>Stroke (mm)
+          <label data-tip="Linear travel distance for this step (mm)">Stroke (mm)
             <input data-step="${index}" data-field="stroke" type="number" step="0.1" value="${step.stroke}" style="padding:8px 10px;font-size:13px;" />
           </label>
         </div>
         <div class="field-row">
-          <label>Move time (s)
+          <label data-tip="Total move time = acceleration time + constant speed time + deceleration time (s)">Move time (s)
             <input data-step="${index}" data-field="move_time" type="number" step="0.01" value="${step.move_time}" style="padding:8px 10px;font-size:13px;" />
           </label>
         </div>
         <div class="field-row">
-          <label>Acceleration time (s)
-            <input data-step="${index}" data-field="acceleration_time" type="number" step="0.01" value="${step.acceleration_time ?? ''}" style="padding:8px 10px;font-size:13px;" />
+          <label data-tip="Duration of the acceleration phase. Leave blank to derive from the Acc% setting.">Acceleration time (s)
+            <span class="timing-warn" data-warn="${index}" style="display:${accDecInvalid ? 'inline' : 'none'};color:#ef4444;font-size:11px;margin-left:4px;">⚠ acc+dec &gt; move</span>
+            <input data-step="${index}" data-field="acceleration_time" type="number" step="0.01" value="${step.acceleration_time ?? ''}" style="padding:8px 10px;font-size:13px;${invBorder}${invBg}" />
           </label>
         </div>
         <div class="field-row">
-          <label>Deceleration time (s)
-            <input data-step="${index}" data-field="deceleration_time" type="number" step="0.01" value="${step.deceleration_time ?? ''}" style="padding:8px 10px;font-size:13px;" />
+          <label data-tip="Duration of the deceleration phase. Leave blank to derive from the Acc% setting.">Deceleration time (s)
+            <span class="timing-warn" data-warn="${index}" style="display:${accDecInvalid ? 'inline' : 'none'};color:#ef4444;font-size:11px;margin-left:4px;">⚠ acc+dec &gt; move</span>
+            <input data-step="${index}" data-field="deceleration_time" type="number" step="0.01" value="${step.deceleration_time ?? ''}" style="padding:8px 10px;font-size:13px;${invBorder}${invBg}" />
           </label>
         </div>
         <div class="field-row">
-          <label>Payload mass (kg)
+          <label data-tip="Auto-calculated: Move time minus acceleration and deceleration time (s)">Constant speed time (s)
+            <input data-const-step="${index}" type="text" readonly value="${(tAcc > 0 || tDec > 0) ? tConst.toFixed(3) : '—'}" style="padding:8px 10px;font-size:13px;background:#f3f4f6;color:#6b7280;cursor:default;" />
+          </label>
+        </div>
+        <div class="field-row">
+          <label data-tip="Idle time at the end of this step before the next move begins (s)">Dwell time (s)
+            <input data-step="${index}" data-field="dwell_time" type="number" step="0.01" value="${step.dwell_time ?? 0}" style="padding:8px 10px;font-size:13px;" />
+          </label>
+        </div>
+        <div class="field-row">
+          <label data-tip="Total mass of payload, tooling, and any attached fixtures being moved (kg)">Payload mass (kg)
             <input data-step="${index}" data-field="load_mass" type="number" step="0.1" value="${step.load_mass}" style="padding:8px 10px;font-size:13px;" />
           </label>
         </div>
         <div class="field-row">
-          <label>Tilt angle (°)
+          <label data-tip="Angle of the axis from horizontal: 0° = fully horizontal, 90° = fully vertical (°)">Inclination angle (°)
             <input data-step="${index}" data-field="tilt_deg" type="number" step="1" value="${step.tilt_deg}" style="padding:8px 10px;font-size:13px;" />
           </label>
         </div>
         <div class="field-row" style="grid-column:1/-1;">
-          <label>Ext. force direction
+          <label data-tip="Whether the external force opposes or assists the direction of payload motion">Ext. force direction
             <select data-step="${index}" data-field="external_force_dir" style="padding:8px 10px;font-size:13px;">
-              <option value="opposing" ${step.external_force_dir === 'opposing' ? 'selected' : ''}>Opposing movement (+)</option>
-              <option value="aiding"   ${step.external_force_dir === 'aiding'   ? 'selected' : ''}>Aiding movement (−)</option>
+              <option value="opposing" ${step.external_force_dir === 'opposing' ? 'selected' : ''}>Opposing movement</option>
+              <option value="aiding"   ${step.external_force_dir === 'aiding'   ? 'selected' : ''}>Aiding movement</option>
             </select>
           </label>
         </div>
         <div class="field-row" style="grid-column:1/-1;">
-          <label>Payload movement direction
+          <label data-tip="Direction of payload travel relative to gravity: against gravity means lifting, with gravity means lowering">Payload movement direction
             <select data-step="${index}" data-field="movement_dir" style="padding:8px 10px;font-size:13px;">
-              <option value="against_gravity" ${step.movement_dir === 'against_gravity' ? 'selected' : ''}>Against gravity (+)</option>
-              <option value="with_gravity"    ${step.movement_dir === 'with_gravity'    ? 'selected' : ''}>With gravity (−)</option>
+              <option value="against_gravity" ${step.movement_dir === 'against_gravity' ? 'selected' : ''}>Against gravity</option>
+              <option value="with_gravity"    ${step.movement_dir === 'with_gravity'    ? 'selected' : ''}>With gravity</option>
             </select>
           </label>
         </div>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
+}
+
+function updateStepValidation() {
+  state.steps.forEach((step, index) => {
+    const tAcc  = Number(step.acceleration_time) || 0;
+    const tDec  = Number(step.deceleration_time) || 0;
+    const tMove = Number(step.move_time) || 0;
+    const invalid = (tAcc + tDec) > tMove + 1e-9;
+    const tConst  = Math.max(0, tMove - tAcc - tDec);
+
+    ['acceleration_time', 'deceleration_time'].forEach(field => {
+      const el = document.querySelector(`[data-step="${index}"][data-field="${field}"]`);
+      if (!el) return;
+      el.style.borderColor = invalid ? '#ef4444' : '';
+      el.style.background  = invalid ? '#fef2f2' : '';
+    });
+
+    document.querySelectorAll(`.timing-warn[data-warn="${index}"]`).forEach(span => {
+      span.style.display = invalid ? 'inline' : 'none';
+    });
+
+    const constEl = document.querySelector(`[data-const-step="${index}"]`);
+    if (constEl) constEl.value = (tAcc > 0 || tDec > 0 || tMove > 0) ? tConst.toFixed(3) : '—';
+  });
 }
 
 function renderInputs() {
@@ -1229,15 +1281,28 @@ function renderInputs() {
 }
 
 function updateMechanicalVisibility() {
-  const parallelBlock = document.getElementById('parallel-kit-block');
-  const gearboxBlock = document.getElementById('gearbox-block');
-  const gbSuggestionBlock = document.getElementById('gearbox-suggestion-block');
-  const hasParallel = Number(state.has_parallel_kit) !== 0;
-  const hasGearbox = Number(state.has_gearbox) !== 0;
+  const ctx = (typeof Projects !== 'undefined') ? Projects.getContext() : null;
+  const projCfg = (ctx && typeof Projects !== 'undefined') ? (Projects.get(ctx.projectId)?.config || null) : null;
 
-  if (parallelBlock) parallelBlock.style.display = hasParallel ? '' : 'none';
-  if (gearboxBlock) gearboxBlock.style.display = hasGearbox ? '' : 'none';
-  if (gbSuggestionBlock) gbSuggestionBlock.style.display = hasGearbox ? '' : 'none';
+  const guideBlock       = document.getElementById('guide-block');
+  const parallelBlock    = document.getElementById('parallel-kit-block');
+  const gearboxBlock     = document.getElementById('gearbox-block');
+  const gbSuggestionBlock= document.getElementById('gearbox-suggestion-block');
+  const cbPanel          = document.getElementById('cb-panel');
+  const cbGuideFields    = document.getElementById('cb-guide-fields');
+
+  const hasLM       = Number(state.has_lm_guide) !== 0;
+  const hasParallel = Number(state.has_parallel_kit) !== 0;
+  const hasGearbox  = Number(state.has_gearbox) !== 0;
+  const hasCB       = Number(state.has_counterbalance) !== 0;
+  const cbType      = projCfg?.counterbalance || 'guide_shaft'; // 'pulley' | 'guide_shaft' | 'none'
+
+  if (guideBlock)        guideBlock.style.display        = hasLM      ? '' : 'none';
+  if (parallelBlock)     parallelBlock.style.display     = hasParallel ? '' : 'none';
+  if (gearboxBlock)      gearboxBlock.style.display      = hasGearbox  ? '' : 'none';
+  if (gbSuggestionBlock) gbSuggestionBlock.style.display = hasGearbox  ? '' : 'none';
+  if (cbPanel)           cbPanel.style.display           = hasCB       ? '' : 'none';
+  if (cbGuideFields)     cbGuideFields.style.display     = (hasCB && cbType === 'guide_shaft') ? 'contents' : 'none';
 }
 
 function handleInput(event) {
@@ -1271,6 +1336,7 @@ function handleInput(event) {
 
   saveState();
   render();
+  if (typeof stepIndex !== 'undefined') updateStepValidation();
 }
 
 function setExcelStatus(message, isError = false) {
@@ -1496,6 +1562,18 @@ function parseExcelValues(rows) {
     ['ball screw efficiency',                   'bs_efficiency_pct'],  // % → convert
     ['ball screw pitch',                        'bs_pitch'],
     ['ball screw dia',                          'bs_dia'],
+    // LM Guide
+    ['lm guide present',                        '_text_has_lm_guide'],
+    ['lm guide needed',                         '_text_has_lm_guide'],
+    ['fixture / carriage mass',                 'guide_mass'],
+    ['fixture carriage mass',                   'guide_mass'],
+    ['max withstand force',                     'guide_max_force'],
+    ['service life @100% load',                 'guide_service_life'],
+    ['service life at 100 load',                'guide_service_life'],
+    // Ball Screw
+    ['max permitted speed',                     'bs_max_speed'],
+    ['max permitted torque',                    'bs_max_torque'],
+    ['repetition accuracy',                     'bs_repetition_accuracy'],
     // Counterbalance
     ['counterbalance present',                  '_text_has_counterbalance'],
     ['counterbalance mass',                     'cb_mass'],
@@ -1559,6 +1637,7 @@ function parseExcelValues(rows) {
     ['cb inclination',                          'cb_angle_deg'],
     ['cb friction coeff',                       'cb_mu'],
     ['bs lead',                                 'bs_pitch'],
+    ['bs lead (mm/rev)',                         'bs_pitch'],
     ['bs efficiency',                           'bs_efficiency_pct'],
     ['bs inertia',                              '_ignore'],
     ['bs diameter',                             'bs_dia'],
@@ -1603,7 +1682,7 @@ function parseExcelValues(rows) {
   // They are stored temporarily and promoted to steps[0] after parsing.
   // stroke, move_time, external_force, tilt_deg are unambiguous step fields.
   // load_mass ("moving mass") is ambiguous: first occurrence = payload (step), second = guide carriage.
-  const STEP_FIELDS = new Set(['stroke', 'move_time', 'acceleration_time', 'deceleration_time', 'external_force', 'tilt_deg', 'load_mass']);
+  const STEP_FIELDS = new Set(['stroke', 'move_time', 'dwell_time', 'acceleration_time', 'deceleration_time', 'external_force', 'tilt_deg', 'load_mass']);
   const STEP_TEXT_FIELDS = new Set(['_text_external_force_dir', '_text_movement_dir']);
 
   function resolveRow(row) {
@@ -1622,14 +1701,18 @@ function parseExcelValues(rows) {
 
     // Layout A: col1 = label, col2 = value (simple calc sheet)
     // Layout A2: col1 = label, col2 = symbol string, col3 = unit, col4 = value (detailed calc sheet)
-    // If col2 is a non-numeric string (a symbol like "F", "Pb", "mp"), fall back to col4.
+    // Layout A3 (new template): col0=group, col1=label, col2=notes, col3=value
+    // If col2 is a non-numeric string, fall back to col3 then col4.
     const keyA = tryMatch(row[1]);
     if (keyA) {
       const v2 = row[2];
       const v2IsNumeric = typeof v2 === 'number' ||
         (v2 !== undefined && v2 !== null && v2 !== '' && !isNaN(Number(String(v2).trim())));
+      const v3 = row[3];
+      const v3HasValue = v3 !== undefined && v3 !== null && v3 !== '';
       const v4 = row[4];
-      const value = (!v2IsNumeric && v4 !== undefined && v4 !== null && v4 !== '') ? v4 : v2;
+      const v4HasValue = v4 !== undefined && v4 !== null && v4 !== '';
+      const value = !v2IsNumeric && v3HasValue ? v3 : !v2IsNumeric && v4HasValue ? v4 : v2;
       return { key: keyA, value };
     }
 
@@ -1716,6 +1799,14 @@ function parseExcelValues(rows) {
         importedStep.movement_dir = dir;
         updated++;
       }
+      continue;
+    }
+
+    // LM Guide present: yes → 1, no → 0
+    if (key === '_text_has_lm_guide') {
+      const raw = String(value || '').toLowerCase().trim();
+      state.has_lm_guide = raw.includes('yes') ? 1 : 0;
+      updated++;
       continue;
     }
 
@@ -1838,6 +1929,7 @@ function addMovementStep() {
     label: `Step ${state.steps.length + 1}`,
     stroke: 15,
     move_time: 1.0,
+    dwell_time: 0.1,
     external_force: 250,
     load_mass: 1.0,
     tilt_deg: 45,
@@ -2117,14 +2209,14 @@ function renderMotionProfileChart() {
     segs.push({
       label:     step.label || `Step ${i + 1}`,
       t_acc, t_const, t_dec,
-      dwell:     state.dwell_time,
+      dwell:     step.dwell_time ?? 0,
       Vmax,
-      total:     t_acc + t_const + t_dec + state.dwell_time,
+      total:     t_acc + t_const + t_dec + (step.dwell_time ?? 0),
       color:     COLORS[i % COLORS.length],
       load_mass: step.load_mass,
       tilt_deg:  step.tilt_deg,
     });
-    totalT += t_acc + t_const + t_dec + state.dwell_time;
+    totalT += t_acc + t_const + t_dec + (step.dwell_time ?? 0);
   });
 
   if (summary) {
@@ -2288,8 +2380,8 @@ function renderVelocityChart() {
     const { avail, t_acc, t_dec, t_const } = getStepTimings(step, state);
     const Vmax = getPeakLinearSpeed(step, state);
     maxV = Math.max(maxV, Vmax);
-    totalT += t_acc + t_const + t_dec + state.dwell_time;
-    return { t_acc, t_const, t_dec, dwell: state.dwell_time, Vmax, color: COLORS[i % COLORS.length], label: step.label || `Step ${i+1}` };
+    totalT += t_acc + t_const + t_dec + (step.dwell_time ?? 0);
+    return { t_acc, t_const, t_dec, dwell: step.dwell_time ?? 0, Vmax, color: COLORS[i % COLORS.length], label: step.label || `Step ${i+1}` };
   });
   if (maxV === 0) maxV = 1;
   const tX = t => PAD.left + (t / totalT) * pw;
@@ -2407,8 +2499,8 @@ function renderTorqueChart() {
     const T_decel_m = eff_ratio > 0 ? Math.abs(T_bs_load - T_dec) * SF_c / (eff_ratio * eff_eff) + gbNL : 0;
 
     maxT = Math.max(maxT, T_peak_m, Math.abs(T_decel_m));
-    totalT += t_acc + t_const + t_dec + state.dwell_time;
-    return { t_acc, t_const, t_dec, dwell: state.dwell_time, T_load_m, T_peak_m, T_decel_m, color: COLORS[i % COLORS.length], label: step.label || `Step ${i+1}` };
+    totalT += t_acc + t_const + t_dec + (step.dwell_time ?? 0);
+    return { t_acc, t_const, t_dec, dwell: step.dwell_time ?? 0, T_load_m, T_peak_m, T_decel_m, color: COLORS[i % COLORS.length], label: step.label || `Step ${i+1}` };
   });
 
   const tX = t => PAD.left + (t / totalT) * pw;
@@ -2580,9 +2672,9 @@ function renderDisplacementChart() {
     cumDist += step.stroke;
     cursor  += t_acc + t_const + t_dec;
     // Dwell
-    if (state.dwell_time > 0) {
-      points.push({ t: cursor + state.dwell_time, d: cumDist, ci: i });
-      cursor += state.dwell_time;
+    if ((step.dwell_time ?? 0) > 0) {
+      points.push({ t: cursor + step.dwell_time, d: cumDist, ci: i });
+      cursor += step.dwell_time;
     }
   });
 
@@ -2614,7 +2706,7 @@ function renderDisplacementChart() {
   cursor = 0;
   state.steps.forEach((step, i) => {
     const { avail, t_acc, t_dec } = getStepTimings(step, state);
-    cursor += t_acc + Math.max(0, avail - t_acc - t_dec) + t_dec + state.dwell_time;
+    cursor += t_acc + Math.max(0, avail - t_acc - t_dec) + t_dec + (step.dwell_time ?? 0);
     ctx.strokeStyle = '#d1d5db66'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(tX(cursor), PAD.top); ctx.lineTo(tX(cursor), PAD.top + ph); ctx.stroke();
   });

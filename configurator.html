@@ -144,42 +144,42 @@ main{flex:1;max-width:1160px;margin:0 auto;padding:36px 24px;width:100%}
           <text x="129" y="77" font-size="7" fill="#64748b">counter</text>
         </g>
 
-        <!-- CB PULLEY — LEFT side, pulley above left bearing, mass hangs left -->
+        <!-- CB PULLEY — 90° routing: horizontal rope from payload left, vertical drop to mass -->
         <g id="layer-cb-pulley" class="svg-layer hidden">
-          <circle cx="46" cy="28" r="18" fill="#fff" stroke="#7c3aed" stroke-width="2"/>
-          <circle cx="46" cy="28" r="9"  fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-          <circle cx="46" cy="28" r="3.5" fill="#7c3aed"/>
-          <line x1="196" y1="60" x2="46" y2="28" stroke="#7c3aed" stroke-width="1.5" stroke-dasharray="5,3"/>
-          <line x1="33" y1="44" x2="22" y2="222" stroke="#7c3aed" stroke-width="1.5"/>
-          <rect x="4" y="222" width="40" height="48" rx="4" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-          <text x="24" y="248" text-anchor="middle" font-size="12" fill="#6d28d9" font-weight="700">m</text>
-          <text x="33" y="252" font-size="8" fill="#6d28d9">c</text>
-          <text x="46" y="14" text-anchor="middle" font-size="10" fill="#7c3aed" font-weight="600">CB Pulley</text>
+          <circle cx="46" cy="52" r="18" fill="#fff" stroke="#7c3aed" stroke-width="2"/>
+          <circle cx="46" cy="52" r="9"  fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+          <circle cx="46" cy="52" r="3.5" fill="#7c3aed"/>
+          <!-- horizontal rope: payload left → pulley (90° entry) -->
+          <line x1="180" y1="52" x2="64" y2="52" stroke="#7c3aed" stroke-width="1.5" stroke-dasharray="5,3"/>
+          <!-- vertical rope: pulley bottom → mass (90° exit) -->
+          <line x1="46" y1="70" x2="46" y2="228" stroke="#7c3aed" stroke-width="1.5"/>
+          <rect x="26" y="228" width="40" height="48" rx="4" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+          <text x="46" y="254" text-anchor="middle" font-size="12" fill="#6d28d9" font-weight="700">m</text>
+          <text x="55" y="258" font-size="8" fill="#6d28d9">c</text>
+          <text x="46" y="26" text-anchor="middle" font-size="10" fill="#7c3aed" font-weight="600">CB Pulley</text>
         </g>
 
-        <!-- CB WITHOUT COUNTERBALANCE — pulley at top + guide shaft (rod + slider + mass guided by rod) -->
+        <!-- CB GUIDE SHAFT — 90° pulley + vertical guide shaft constraining counterbalance mass -->
         <g id="layer-cb-shaft" class="svg-layer hidden">
-          <!-- pulley above left bearing (same position as "with CB") -->
-          <circle cx="46" cy="28" r="18" fill="#fff" stroke="#db2777" stroke-width="2"/>
-          <circle cx="46" cy="28" r="9"  fill="#fce7f3" stroke="#db2777" stroke-width="1.5"/>
-          <circle cx="46" cy="28" r="3.5" fill="#db2777"/>
-          <!-- rope: payload top-left → pulley (dashed) -->
-          <line x1="196" y1="60" x2="46" y2="28" stroke="#db2777" stroke-width="1.5" stroke-dasharray="5,3"/>
-          <!-- rope: pulley down to guide rod -->
-          <line x1="33" y1="44" x2="28" y2="58" stroke="#db2777" stroke-width="1.5"/>
-          <!-- vertical guide rod (rod constrains mass motion) -->
-          <rect x="22" y="58" width="12" height="222" rx="3" fill="#fce7f3" stroke="#db2777" stroke-width="1.5"/>
-          <rect x="25" y="58" width="4"  height="222" fill="#fbcfe8" opacity="0.5"/>
-          <!-- slider block riding on rod at payload height -->
-          <rect x="16" y="74" width="24" height="28" rx="3" fill="#fce7f3" stroke="#db2777" stroke-width="1.5"/>
-          <!-- dashed arm connecting slider to payload left side -->
-          <line x1="40" y1="88" x2="180" y2="84" stroke="#db2777" stroke-width="1.5" stroke-dasharray="4,3"/>
-          <!-- guided mass at bottom of rod -->
-          <rect x="8" y="262" width="42" height="44" rx="4" fill="#fce7f3" stroke="#db2777" stroke-width="1.5"/>
-          <text x="29" y="287" text-anchor="middle" font-size="12" fill="#9d174d" font-weight="700">m</text>
-          <text x="38" y="291" font-size="8" fill="#9d174d">c</text>
+          <!-- pulley (90° routing) -->
+          <circle cx="46" cy="52" r="18" fill="#fff" stroke="#db2777" stroke-width="2"/>
+          <circle cx="46" cy="52" r="9"  fill="#fce7f3" stroke="#db2777" stroke-width="1.5"/>
+          <circle cx="46" cy="52" r="3.5" fill="#db2777"/>
+          <!-- horizontal rope: payload left → pulley (90° entry) -->
+          <line x1="180" y1="52" x2="64" y2="52" stroke="#db2777" stroke-width="1.5" stroke-dasharray="5,3"/>
+          <!-- vertical guide shaft (rod constrains mass to vertical motion only) -->
+          <rect x="39" y="70" width="14" height="210" rx="3" fill="#fce7f3" stroke="#db2777" stroke-width="1.5"/>
+          <rect x="43" y="70" width="6"  height="210" fill="#fbcfe8" opacity="0.5"/>
+          <!-- rope (pulley bottom → mass top, runs along shaft) -->
+          <line x1="46" y1="70" x2="46" y2="232" stroke="#db2777" stroke-width="1.5"/>
+          <!-- counterbalance mass riding on guide shaft (linear bushings as side tabs) -->
+          <rect x="22" y="232" width="48" height="46" rx="5" fill="#fce7f3" stroke="#db2777" stroke-width="2"/>
+          <rect x="13" y="242" width="11" height="10" rx="2" fill="#fce7f3" stroke="#db2777" stroke-width="1.5"/>
+          <rect x="70" y="242" width="11" height="10" rx="2" fill="#fce7f3" stroke="#db2777" stroke-width="1.5"/>
+          <text x="46" y="258" text-anchor="middle" font-size="12" fill="#9d174d" font-weight="700">m</text>
+          <text x="55" y="262" font-size="8" fill="#9d174d">c</text>
           <!-- label -->
-          <text x="46" y="14" text-anchor="middle" font-size="9" fill="#db2777" font-weight="600">Guide Shaft</text>
+          <text x="46" y="26" text-anchor="middle" font-size="9" fill="#db2777" font-weight="600">Guide Shaft</text>
         </g>
 
         <!-- ── INLINE DRIVE TRAIN (no Parallel Kit) ── -->
@@ -189,14 +189,31 @@ main{flex:1;max-width:1160px;margin:0 auto;padding:36px 24px;width:100%}
           <rect x="520" y="146" width="148" height="8" fill="#9ca3af" rx="1"/>
         </g>
 
-        <!-- Gearbox inline (hasGB && !hasPK) — sits on coupling shaft -->
+        <!-- Gearbox inline (hasGB && !hasPK) — realistic gear reduction, shaft visible both sides -->
         <g id="layer-gb-inline" class="svg-layer hidden">
-          <rect x="520" y="115" width="60" height="70" rx="4" fill="#fefce8" stroke="#ca8a04" stroke-width="1.5"/>
-          <line x1="520" y1="115" x2="580" y2="185" stroke="#ca8a04" stroke-width="1" stroke-dasharray="3,2"/>
-          <line x1="580" y1="115" x2="520" y2="185" stroke="#ca8a04" stroke-width="1" stroke-dasharray="3,2"/>
-          <text x="550" y="155" text-anchor="middle" font-size="10" fill="#92400e" font-weight="700">GB</text>
-          <text x="584" y="152" font-size="9" fill="#b45309">η</text>
-          <text x="591" y="156" font-size="7" fill="#b45309">gear</text>
+          <!-- Housing bg covers shaft beneath -->
+          <rect x="516" y="112" width="78" height="76" rx="5" fill="#fff"/>
+          <!-- Housing outline -->
+          <rect x="516" y="112" width="78" height="76" rx="5" fill="#fef9c3" stroke="#ca8a04" stroke-width="2"/>
+          <!-- Output shaft stub at left housing wall (load/ballscrew side) -->
+          <rect x="510" y="147" width="8" height="6" fill="#9ca3af" rx="1"/>
+          <!-- Large output gear (left, low-speed / load side) -->
+          <circle cx="540" cy="150" r="22" fill="#fde68a" stroke="#b45309" stroke-width="1.5"/>
+          <line x1="540" y1="128" x2="540" y2="172" stroke="#b45309" stroke-width="1.2" opacity="0.45"/>
+          <line x1="518" y1="150" x2="562" y2="150" stroke="#b45309" stroke-width="1.2" opacity="0.45"/>
+          <line x1="524" y1="134" x2="556" y2="166" stroke="#b45309" stroke-width="1.2" opacity="0.45"/>
+          <line x1="556" y1="134" x2="524" y2="166" stroke="#b45309" stroke-width="1.2" opacity="0.45"/>
+          <circle cx="540" cy="150" r="5" fill="#b45309"/>
+          <!-- Small input gear (right, high-speed / motor side) — meshes with large gear -->
+          <circle cx="572" cy="150" r="12" fill="#fbbf24" stroke="#92400e" stroke-width="1.5"/>
+          <line x1="572" y1="138" x2="572" y2="162" stroke="#92400e" stroke-width="1.2" opacity="0.45"/>
+          <line x1="560" y1="150" x2="584" y2="150" stroke="#92400e" stroke-width="1.2" opacity="0.45"/>
+          <circle cx="572" cy="150" r="4" fill="#92400e"/>
+          <!-- Input shaft stub at right housing wall (motor side) -->
+          <rect x="592" y="147" width="8" height="6" fill="#9ca3af" rx="1"/>
+          <!-- η_gear label -->
+          <text x="597" y="134" font-size="9" fill="#b45309">η</text>
+          <text x="604" y="138" font-size="7" fill="#b45309">gear</text>
         </g>
 
         <!-- Motor inline (no PK) -->
@@ -241,18 +258,33 @@ main{flex:1;max-width:1160px;margin:0 auto;padding:36px 24px;width:100%}
           <rect x="350" y="254" width="114" height="8" fill="#9ca3af" rx="1"/>
         </g>
 
-        <!-- Gearbox with PK (hasPK && hasGB) — horizontal box to LEFT of PK at motor shaft level -->
+        <!-- Gearbox with PK (hasPK && hasGB) — realistic gear reduction, shaft visible both sides -->
         <g id="layer-gb-below-pk" class="svg-layer hidden">
-          <!-- short shaft from motor right edge to GB left face -->
+          <!-- Short shaft from motor right edge to GB left face -->
           <rect x="350" y="254" width="36" height="8" fill="#9ca3af" rx="1"/>
-          <!-- white bg to erase anything behind GB box -->
+          <!-- Housing bg covers anything behind -->
           <rect x="385" y="228" width="80" height="62" rx="4" fill="#fff"/>
-          <!-- GB box: right face at x=464 (PK left face), runs leftward -->
-          <rect x="386" y="228" width="78" height="62" rx="4" fill="#fefce8" stroke="#ca8a04" stroke-width="2"/>
-          <line x1="386" y1="228" x2="464" y2="290" stroke="#ca8a04" stroke-width="1" stroke-dasharray="3,2"/>
-          <line x1="464" y1="228" x2="386" y2="290" stroke="#ca8a04" stroke-width="1" stroke-dasharray="3,2"/>
-          <text x="425" y="264" text-anchor="middle" font-size="13" fill="#92400e" font-weight="700">GB</text>
-          <text x="425" y="282" text-anchor="middle" font-size="9" fill="#b45309">η<tspan font-size="7" dy="1">gear</tspan></text>
+          <!-- Housing outline -->
+          <rect x="386" y="228" width="78" height="62" rx="4" fill="#fef9c3" stroke="#ca8a04" stroke-width="2"/>
+          <!-- Input shaft stub at left housing wall (motor side) -->
+          <rect x="380" y="254" width="8" height="6" fill="#9ca3af" rx="1"/>
+          <!-- Small input gear (left, high-speed / motor side) -->
+          <circle cx="413" cy="258" r="14" fill="#fbbf24" stroke="#92400e" stroke-width="1.5"/>
+          <line x1="413" y1="244" x2="413" y2="272" stroke="#92400e" stroke-width="1.2" opacity="0.45"/>
+          <line x1="399" y1="258" x2="427" y2="258" stroke="#92400e" stroke-width="1.2" opacity="0.45"/>
+          <circle cx="413" cy="258" r="4" fill="#92400e"/>
+          <!-- Large output gear (right, low-speed / PK side) — meshes with small gear -->
+          <circle cx="446" cy="258" r="18" fill="#fde68a" stroke="#b45309" stroke-width="1.5"/>
+          <line x1="446" y1="240" x2="446" y2="276" stroke="#b45309" stroke-width="1.2" opacity="0.45"/>
+          <line x1="428" y1="258" x2="464" y2="258" stroke="#b45309" stroke-width="1.2" opacity="0.45"/>
+          <line x1="433" y1="245" x2="459" y2="271" stroke="#b45309" stroke-width="1.2" opacity="0.45"/>
+          <line x1="459" y1="245" x2="433" y2="271" stroke="#b45309" stroke-width="1.2" opacity="0.45"/>
+          <circle cx="446" cy="258" r="5" fill="#b45309"/>
+          <!-- Output shaft stub at right housing wall (PK side) -->
+          <rect x="462" y="254" width="8" height="6" fill="#9ca3af" rx="1"/>
+          <!-- η_gear label -->
+          <text x="393" y="226" font-size="9" fill="#b45309">η</text>
+          <text x="400" y="222" font-size="7" fill="#b45309">gear</text>
         </g>
 
         <!-- Motor parallel (hasPK) — motor circle only; shaft handled by separate layers above -->
@@ -273,7 +305,7 @@ main{flex:1;max-width:1160px;margin:0 auto;padding:36px 24px;width:100%}
         <div class="legend-item" id="leg-lm" style="display:none"><span class="legend-dot" style="background:#bfdbfe;border:1.5px solid #3b82f6;"></span>LM Guide</div>
         <div class="legend-item" id="leg-gearbox" style="display:none"><span class="legend-dot" style="background:#fefce8;border:1.5px solid #ca8a04;"></span>Gearbox</div>
         <div class="legend-item" id="leg-pk" style="display:none"><span class="legend-dot" style="background:#f0fdf4;border:1.5px dashed #16a34a;"></span>Parallel Kit</div>
-        <div class="legend-item" id="leg-cb-p" style="display:none"><span class="legend-dot" style="background:#ede9fe;border:1.5px solid #7c3aed;"></span>Pulley + Counterbalance</div>
+        <div class="legend-item" id="leg-cb-p" style="display:none"><span class="legend-dot" style="background:#ede9fe;border:1.5px solid #7c3aed;"></span>With Pulley</div>
         <div class="legend-item" id="leg-cb-s" style="display:none"><span class="legend-dot" style="background:#fce7f3;border:1.5px solid #db2777;"></span>Pulley + Guide Shaft</div>
       </div>
     </div>
@@ -302,8 +334,8 @@ main{flex:1;max-width:1160px;margin:0 auto;padding:36px 24px;width:100%}
           <div class="step-label"><span class="step-num">3</span>Counterbalance</div>
           <div class="option-row">
             <button class="opt" data-cfg="counterbalance" data-val="none">None</button>
-            <button class="opt" data-cfg="counterbalance" data-val="pulley">With Counterbalance</button>
-            <button class="opt" data-cfg="counterbalance" data-val="guide_shaft">Without Counterbalance</button>
+            <button class="opt" data-cfg="counterbalance" data-val="guide_shaft">Pulley + Guide Shaft</button>
+            <button class="opt" data-cfg="counterbalance" data-val="pulley">With Pulley</button>
           </div>
         </div>
 

@@ -689,6 +689,8 @@ function autoSelectMotor(st) {
     'gearbox inertia':                                'gb_inertia',
     'gb backlash':                                    'gb_backlash',
     'gearbox backlash':                               'gb_backlash',
+    'backlash (arcmin)':                              'gb_backlash',
+    'backlash':                                       'gb_backlash',
     // New fields added for 5-column template format
     'lm guide present':                               '_yesno:has_lm_guide',
     'bs max speed':                                   'bs_max_speed',
@@ -717,7 +719,7 @@ function autoSelectMotor(st) {
     has_counterbalance:0, cb_mass:0, cb_angle_deg:90, cb_mu:0.005,
     bs_max_speed:12000, bs_max_torque:3, bs_repetition_accuracy:10,
     has_parallel_kit:1, pk_ratio:1, pk_no_load_torque:0.07, pk_inertia:2.67e-5, pk_max_torque:3, pk_max_speed:6000,
-    has_gearbox:0, gb_ratio:1, gb_efficiency:0.97, gb_no_load_torque:0.01, gb_inertia:0, gb_backlash:7,
+    has_gearbox:0, gb_ratio:1, gb_efficiency:0.97, gb_no_load_torque:0.01, gb_inertia:0, gb_backlash:0,
     gb_rated_input_speed:0, gb_rated_output_torque:0,
     sm_permitted_inertia_ratio:7, sm_encoder_ppr:1048576,
   };
@@ -730,8 +732,9 @@ function autoSelectMotor(st) {
     const norm = normaliseHeader(h);
     // Exact match
     if (USER_INPUT_COL_MAP[norm]) return USER_INPUT_COL_MAP[norm];
-    // Partial match
-    for (const [k, v] of Object.entries(USER_INPUT_COL_MAP)) {
+    // Partial match — sort by key length descending so specific keys win over short ones (e.g. "gb backlash" before "gb")
+    const entries = Object.entries(USER_INPUT_COL_MAP).sort((a, b) => b[0].length - a[0].length);
+    for (const [k, v] of entries) {
       if (norm.includes(k) || k.includes(norm)) return v;
     }
     return null;
@@ -816,8 +819,12 @@ function autoSelectMotor(st) {
               const row = allRows[i];
               if (!Array.isArray(row) || row.every(c => c == null || String(c).trim() === '')) continue;
               const key = matchUserInputHeader(row[paramColOffset]); // col 0 (3-col) or col 1 (5-col with Group)
+              // Log any row that mentions backlash, regardless of whether it matched
+              if (String(row[paramColOffset]||'').toLowerCase().includes('backlash') || String(row[0]||'').toLowerCase().includes('backlash'))
+                console.log('[CV] backlash candidate: paramColOffset='+paramColOffset+' key='+key+' colIdx='+colIdx+' fullrow='+JSON.stringify(row));
               if (!key) continue;
               const raw = row[colIdx];
+              if (key === 'gb_backlash') console.log('[CV] project.html backlash row found: key='+key+' colIdx='+colIdx+' raw='+JSON.stringify(raw)+' fullrow='+JSON.stringify(row));
               if (raw == null || String(raw).trim() === '') continue;
 
               if (key === 'stn_no') {
@@ -866,6 +873,7 @@ function autoSelectMotor(st) {
                 if (!isNaN(num)) motorState.steps[0][field] = num;
               } else {
                 const num = parseNumberCell(raw);
+                if (key === 'gb_backlash') console.log('[CV] project.html backlash: colIdx='+colIdx+' raw='+JSON.stringify(raw)+' parsed='+num+' row='+JSON.stringify(row));
                 if (!isNaN(num)) motorState[key] = num;
               }
             }

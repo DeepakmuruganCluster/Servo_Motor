@@ -1,5 +1,7 @@
 const G = 9.81;
 
+const STATE_VERSION = 2; // increment when defaults change to force migration
+
 const DEFAULT_STATE = {
   project_shifts: 3,
   project_hours_shift: 7,
@@ -63,7 +65,7 @@ const DEFAULT_STATE = {
   gb_efficiency: 0.97,
   gb_no_load_torque: 0.01,
   gb_inertia: 0,
-  gb_backlash: 7,
+  gb_backlash: 0,
   gb_rated_input_speed: 0,   // calc C298 — GB Rated Input Speed (rpm)
   gb_rated_output_torque: 0, // calc C304 — GB Rated Output Torque (Nm)
   // Servo motor specs
@@ -94,9 +96,21 @@ let state = {};
 let selectedMotorIdx = -1;
 let lastResult = null;
 let inventoryItems = new Map(); // PN (uppercase) → device type (lowercase), e.g. 'motor', 'drive', 'gearbox'
+let lastExcelImportTrace = null;
 
 function saveState() {
+  state.__stateVersion = STATE_VERSION;
   localStorage.setItem('titanServoState', JSON.stringify(state));
+}
+
+function toFiniteNumber(value) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function numberOrDefault(value, fallback) {
+  const num = toFiniteNumber(value);
+  return num === null ? fallback : num;
 }
 
 function loadState() {
@@ -108,6 +122,13 @@ function loadState() {
   try {
     const saved = JSON.parse(raw);
     state = { ...DEFAULT_STATE, ...saved };
+    // Clear the old stale default (7) that shipped in earlier builds.
+    // Only reset if the saved value IS exactly 7 (the old hardcoded default),
+    // so that user-entered values (including those imported from Excel) are preserved.
+    if ((saved.__stateVersion || 1) < STATE_VERSION) {
+      if (state.gb_backlash === 7) state.gb_backlash = DEFAULT_STATE.gb_backlash;
+      state.__stateVersion = STATE_VERSION;
+    }
     if (!Array.isArray(state.steps) || state.steps.length === 0) {
       state.steps = [...DEFAULT_STATE.steps];
     }
@@ -182,32 +203,55 @@ function getMotionProfileDisplayOptions() {
   };
 }
 
+function downloadMotionStepsTemplate() {
+  if (!window.XLSX) { alert('SheetJS library not loaded.'); return; }
+  const headers = [
+    'Step', 'Stroke (mm)', 'Move time (s)', 'Acceleration time (s)',
+    'Deceleration time (s)', 'Dwell time (s)', 'Additional force (N)',
+    'Force direction', 'Movement direction', 'Payload mass (kg)', 'Inclination angle (deg)'
+  ];
+  const exampleRows = (Array.isArray(state.steps) && state.steps.length)
+    ? state.steps.map((s, i) => [
+        s.label || `Step ${i + 1}`,
+        s.stroke ?? 0, s.move_time ?? 1, s.acceleration_time ?? '',
+        s.deceleration_time ?? '', s.dwell_time ?? 0.1,
+        s.external_force ?? 0, s.external_force_dir || 'opposing',
+        s.movement_dir || 'against gravity', s.load_mass ?? 0, s.tilt_deg ?? 0
+      ])
+    : [['Step 1', 15, 1.0, '', '', 0.1, 0, 'opposing', 'against gravity', 1.0, 0]];
+
+  const headerStyle = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { patternType: 'solid', fgColor: { rgb: '2F75B5' } } };
+  const inputStyle  = { fill: { patternType: 'solid', fgColor: { rgb: 'E2F0D9' } } };
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...exampleRows]);
+  ws['!cols'] = headers.map(() => ({ wch: 22 }));
+  headers.forEach((_, i) => {
+    const cell = ws[XLSX.utils.encode_cell({ r: 0, c: i })];
+    if (cell) cell.s = headerStyle;
+  });
+  exampleRows.forEach((_, ri) => {
+    headers.forEach((_, ci) => {
+      const cell = ws[XLSX.utils.encode_cell({ r: ri + 1, c: ci })];
+      if (cell) cell.s = inputStyle;
+    });
+  });
+  const wb = { SheetNames: ['Motion Steps'], Sheets: { 'Motion Steps': ws } };
+  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array', cellStyles: true });
+  const blob = new Blob([buf], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'motion-steps-template.xlsx';
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 function downloadExcelTemplate() {
-  console.log('[CV] downloadExcelTemplate v6 called');
-  const step = (Array.isArray(state.steps) && state.steps[0]) ? state.steps[0] : DEFAULT_STATE.steps[0];
-  const bearingDrag = getBearingDragComponents();
-
-  const ctx = (typeof Projects !== 'undefined') ? Projects.getContext() : null;
-  const projCfg = (ctx && typeof Projects !== 'undefined') ? (Projects.get(ctx.projectId)?.config || null) : null;
-  const showCB = Number(state.has_counterbalance) !== 0 || (projCfg ? (projCfg.counterbalance && projCfg.counterbalance !== 'none') : true);
-  const showPK = Number(state.has_parallel_kit)   !== 0 || (projCfg ? projCfg.has_parallel_kit : true);
-  const showGB = Number(state.has_gearbox)         !== 0 || (projCfg ? projCfg.has_gearbox : true);
-
-  // Each row: [Group, Parameter, Notes, Value]
-  const rows = [
+  if (!window.XLSX) { alert('SheetJS library not loaded.'); return; }
+  // ── SHEET 1: Parameters (all sections always included so every field is editable) ──
+  const paramRows = [
     ['General',        'Stn no',                                     'Station identifier',                              'OP10'],
     ['General',        'Appl',                                       'Application name',                                'App-1'],
-    ['Motion Step',    'Stroke (mm)',                                 'Linear travel distance',                          step.stroke ?? 0],
-    ['Motion Step',    'Move time (s)',                               'Total move time = acc + constant speed + dec',    step.move_time ?? 0],
-    ['Motion Step',    'Acceleration time (s)',                       'Accel phase duration',                            step.acceleration_time ?? ''],
-    ['Motion Step',    'Deceleration time (s)',                       'Decel phase duration',                            step.deceleration_time ?? ''],
-    ['Motion Step',    'Constant speed time (s)',                     'Auto: Move time - Acc - Dec',                     ''],
-    ['Motion Step',    'Dwell time (s)',                              'Wait time at end of stroke',                      step.dwell_time ?? 0],
-    ['Motion Step',    'External force (N)',                          'Process / payload force on the axis',             step.external_force ?? 0],
-    ['Motion Step',    'Ext. force direction',                        'Options: opposing / aiding',                      step.external_force_dir || 'opposing'],
-    ['Motion Step',    'Payload movement direction',                  'Options: against gravity / with gravity',         step.movement_dir || 'against gravity'],
-    ['Motion Step',    'Payload mass (kg)',                           'Mass of payload being moved',                     step.load_mass ?? 0],
-    ['Motion Step',    'Inclination angle (deg)',                     '0 = horizontal, 90 = vertical',                   step.tilt_deg ?? 0],
+    // LM Guide — always present
     ['LM Guide',       'LM Guide present',                           'Options: Yes / No',                               Number(state.has_lm_guide) ? 'Yes' : 'No'],
     ['LM Guide',       'Fixture / carriage mass (kg)',               'Tooling plate + LM guide carriage mass',          state.guide_mass ?? 0],
     ['LM Guide',       'Guide block mass per block (kg)',            'Mass of each LM guide carriage block',            state.guide_block_mass ?? 0.2],
@@ -215,14 +259,14 @@ function downloadExcelTemplate() {
     ['LM Guide',       'Friction Force per block (N)',               'Friction force per carriage block',               state.guide_force ?? 0],
     ['LM Guide',       'Max withstand force (N)',                    'Maximum dynamic load rating of the LM guide',     state.guide_max_force ?? 0],
     ['LM Guide',       'Service life @100% load (km)',               'Rated travel life at 100% load from catalog',     state.guide_service_life ?? 0],
-    ['Counterbalance', 'Counterbalance present',                     'Options: Yes / No',                               Number(state.has_counterbalance) ? 'Yes' : 'No'],
-    ...(showCB ? [
-      ['Counterbalance', 'CB mass (kg)',                             'Counterbalance mass',                             state.cb_mass ?? 0],
-      ['Counterbalance', 'CB inclination (deg)',                     'Counterbalance inclination angle',                state.cb_angle_deg ?? 90],
-      ['Counterbalance', 'CB friction coeff',                        'Counterbalance guide friction coefficient',       state.cb_mu ?? 0],
-      ['Counterbalance', 'Linear bush friction force (N)',           'Friction force per counterbalance bushing',       state.cb_bushing_friction_force ?? 0],
-      ['Counterbalance', 'Number of linear bushings',               'No. of counterbalance linear bushings',           state.cb_n_bushings ?? 0],
-    ] : []),
+    // Counterbalance — always present; set "Counterbalance present" to enable
+    ['Counterbalance', 'Counterbalance present',                     'Options: None / guide_shaft / pulley',            (state.has_counterbalance && state.has_counterbalance !== 0) ? String(state.has_counterbalance) : 'None'],
+    ['Counterbalance', 'CB mass (kg)',                               'Counterbalance mass',                             state.cb_mass ?? 0],
+    ['Counterbalance', 'CB inclination (deg)',                       'Counterbalance inclination angle',                state.cb_angle_deg ?? 90],
+    ['Counterbalance', 'CB friction coeff',                          'Counterbalance guide friction coefficient',       state.cb_mu ?? 0],
+    ['Counterbalance', 'Linear bush friction force (N)',             'Friction force per counterbalance bushing',       state.cb_bushing_friction_force ?? 0],
+    ['Counterbalance', 'Number of linear bushings',                  'No. of counterbalance linear bushings',           state.cb_n_bushings ?? 0],
+    // Ball Screw — always present
     ['Ball Screw',     'BS lead (mm/rev)',                           'Ball screw lead per revolution',                  state.bs_pitch ?? 2],
     ['Ball Screw',     'BS diameter (mm)',                           'Ball screw shaft diameter',                       state.bs_dia ?? 6],
     ['Ball Screw',     'BS length (mm)',                             'Ball screw shaft length',                         state.bs_length ?? 500],
@@ -236,23 +280,22 @@ function downloadExcelTemplate() {
     ['Ball Screw',     'Support side drag torque per block (Nm)',   'Drag torque per support-side block from catalog', state.bs_support_drag_axial ?? 0],
     ['Ball Screw',     'Max permitted speed (rpm)',                  'Max allowable ball screw rotational speed',       state.bs_max_speed ?? 0],
     ['Ball Screw',     'Max permitted torque (Nm)',                  'Max allowable input torque at ball screw',        state.bs_max_torque ?? 0],
-    ['Ball Screw',     'Repetition accuracy (+/- um)',               'Ball screw positional repeatability',             state.bs_repetition_accuracy ?? 0],
-    ...(showPK ? [
-      ['Parallel Kit',  'Parallel Kit needed',                       'Options: Yes / No',                               Number(state.has_parallel_kit) ? 'Yes' : 'No'],
-      ['Parallel Kit',  'PK ratio',                                  'Parallel kit gear ratio',                         state.pk_ratio ?? 1],
-      ['Parallel Kit',  'PK no-load torque (Nm)',                    'Parallel kit no-load running torque',             state.pk_no_load_torque ?? 0],
-      ['Parallel Kit',  'PK inertia (kg.m2)',                        'Parallel kit moment of inertia',                  state.pk_inertia ?? 0],
-      ['Parallel Kit',  'PK max torque (Nm)',                        'Parallel kit max transferable torque',             state.pk_max_torque ?? 0],
-      ['Parallel Kit',  'PK max speed (rpm)',                        'Parallel kit max input speed',                    state.pk_max_speed ?? 0],
-    ] : []),
-    ...(showGB ? [
-      ['Gearbox',       'Gearbox needed',                            'Options: Yes / No',                               Number(state.has_gearbox) ? 'Yes' : 'No'],
-      ['Gearbox',       'GB ratio',                                  'Gearbox ratio',                                   state.gb_ratio ?? 1],
-      ['Gearbox',       'GB efficiency (0-1)',                       'Gearbox mechanical efficiency',                   state.gb_efficiency ?? 0],
-      ['Gearbox',       'GB no-load torque (Nm)',                    'Gearbox no-load running torque',                  state.gb_no_load_torque ?? 0],
-      ['Gearbox',       'GB inertia (kg.m2)',                        'Gearbox reflected inertia',                       state.gb_inertia ?? 0],
-      ['Gearbox',       'GB backlash (arcmin)',                      'Gearbox backlash',                                state.gb_backlash ?? 0],
-    ] : []),
+    ['Ball Screw',     'Position accuracy (+/- um)',                 'Ball screw positional accuracy',                  state.bs_repetition_accuracy ?? 0],
+    // Parallel Kit — always present; set "Parallel Kit needed" to Yes to enable
+    ['Parallel Kit',   'Parallel Kit needed',                        'Options: Yes / No',                               Number(state.has_parallel_kit) ? 'Yes' : 'No'],
+    ['Parallel Kit',   'PK ratio',                                   'Parallel kit gear ratio',                         state.pk_ratio ?? 1],
+    ['Parallel Kit',   'PK no-load torque (Nm)',                     'Parallel kit no-load running torque',             state.pk_no_load_torque ?? 0],
+    ['Parallel Kit',   'PK inertia (kg.m2)',                         'Parallel kit moment of inertia',                  state.pk_inertia ?? 0],
+    ['Parallel Kit',   'PK max torque (Nm)',                         'Parallel kit max transferable torque',             state.pk_max_torque ?? 0],
+    ['Parallel Kit',   'PK max speed (rpm)',                         'Parallel kit max input speed',                    state.pk_max_speed ?? 0],
+    // Gearbox — always present; set "Gearbox needed" to Yes to enable
+    ['Gearbox',        'Gearbox needed',                             'Options: Yes / No',                               Number(state.has_gearbox) ? 'Yes' : 'No'],
+    ['Gearbox',        'GB ratio',                                   'Gearbox ratio',                                   state.gb_ratio ?? 1],
+    ['Gearbox',        'GB efficiency (0-1)',                        'Gearbox mechanical efficiency',                   state.gb_efficiency ?? 0.97],
+    ['Gearbox',        'GB no-load torque (Nm)',                     'Gearbox no-load running torque',                  state.gb_no_load_torque ?? 0],
+    ['Gearbox',        'GB inertia (kg.m2)',                         'Gearbox reflected inertia',                       state.gb_inertia ?? 0],
+    ['Gearbox',        'GB backlash (arcmin)',                       'Gearbox backlash',                                state.gb_backlash ?? 0],
+    // Operating Conditions — always present
     ['Operating Conditions', 'Safety factor (%)',                    'Design safety factor',                            state.safety_factor ?? 20],
     ['Operating Conditions', 'Cycle time (s)',                       'Total machine cycle time',                        state.project_total_cycle ?? 7],
     ['Operating Conditions', 'Axis on-time per cycle (s)',           'Servo operating time per cycle',                  state.project_operating_time ?? 2.6],
@@ -263,27 +306,23 @@ function downloadExcelTemplate() {
     ['Operating Conditions', 'Accuracy required (um)',               'Required positioning accuracy',                   state.project_accuracy ?? 20],
   ];
 
-  const data = [
-    ['Project Input Template', '', '', ''],
+  const paramData = [
+    ['Titan Servo — Parameters', '', '', ''],
     ['', '', '', ''],
-    ['Group', 'Parameter', 'Notes', 'OP10 / App-1'],
-    ...rows,
+    ['Group', 'Parameter', 'Notes', 'Value'],
+    ...paramRows,
   ];
+  const wsP = XLSX.utils.aoa_to_sheet(paramData);
+  wsP['!cols'] = [{ wch: 20 }, { wch: 44 }, { wch: 46 }, { wch: 18 }];
 
-  const ws = XLSX.utils.aoa_to_sheet(data);
-  ws['!cols'] = [{ wch: 20 }, { wch: 44 }, { wch: 46 }, { wch: 18 }];
-
-  // Styles
   const titleStyle  = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 14 }, fill: { patternType: 'solid', fgColor: { rgb: '1F3864' } }, alignment: { horizontal: 'center' } };
   const headerStyle = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { patternType: 'solid', fgColor: { rgb: '2F75B5' } } };
   const paramStyle  = { font: { color: { rgb: '1a1a1a' } }, fill: { patternType: 'solid', fgColor: { rgb: 'F8FAFC' } } };
   const noteStyle   = { font: { italic: true, color: { rgb: '595959' } }, fill: { patternType: 'solid', fgColor: { rgb: 'F2F2F2' } } };
   const inputStyle  = { fill: { patternType: 'solid', fgColor: { rgb: 'E2F0D9' } } };
-  const helperStyle = { fill: { patternType: 'solid', fgColor: { rgb: 'FFF2CC' } }, font: { italic: true } };
 
   const GROUP_COLOURS = {
     'General':              { bg: 'D6DCE4', fg: '1F3864' },
-    'Motion Step':          { bg: 'DDEBF7', fg: '1F3864' },
     'LM Guide':             { bg: 'E2EFDA', fg: '375623' },
     'Counterbalance':       { bg: 'FCE4D6', fg: '7B2C14' },
     'Ball Screw':           { bg: 'FFF2CC', fg: '7D5700' },
@@ -292,39 +331,56 @@ function downloadExcelTemplate() {
     'Operating Conditions': { bg: 'D6E4BC', fg: '375623' },
   };
 
-  const HELPER_PARAMS = new Set(['Constant speed time (s)']);
-
-  ['A1','B1','C1','D1'].forEach(c => { if (ws[c]) ws[c].s = titleStyle; });
-  ['A3','B3','C3','D3'].forEach(c => { if (ws[c]) ws[c].s = headerStyle; });
-
-  data.forEach((row, i) => {
+  ['A1','B1','C1','D1'].forEach(c => { if (wsP[c]) wsP[c].s = titleStyle; });
+  ['A3','B3','C3','D3'].forEach(c => { if (wsP[c]) wsP[c].s = headerStyle; });
+  paramData.forEach((row, i) => {
     if (i < 3 || !row[1]) return;
     const r = i + 1;
-    const grp = row[0] || '';
-    const pal = GROUP_COLOURS[grp] || { bg: 'D9E1F2', fg: '1F3864' };
-    const grpStyle = {
-      font:      { bold: true, color: { rgb: pal.fg } },
-      fill:      { patternType: 'solid', fgColor: { rgb: pal.bg } },
-      alignment: { horizontal: 'center', wrapText: true },
-    };
-    if (ws[`A${r}`]) ws[`A${r}`].s = grpStyle;
-    if (ws[`B${r}`]) ws[`B${r}`].s = paramStyle;
-    if (ws[`C${r}`]) ws[`C${r}`].s = noteStyle;
-    if (ws[`D${r}`]) ws[`D${r}`].s = HELPER_PARAMS.has(row[1]) ? helperStyle : inputStyle;
+    const pal = GROUP_COLOURS[row[0]] || { bg: 'D9E1F2', fg: '1F3864' };
+    const grpStyle = { font: { bold: true, color: { rgb: pal.fg } }, fill: { patternType: 'solid', fgColor: { rgb: pal.bg } }, alignment: { horizontal: 'center', wrapText: true } };
+    if (wsP[`A${r}`]) wsP[`A${r}`].s = grpStyle;
+    if (wsP[`B${r}`]) wsP[`B${r}`].s = paramStyle;
+    if (wsP[`C${r}`]) wsP[`C${r}`].s = noteStyle;
+    if (wsP[`D${r}`]) wsP[`D${r}`].s = inputStyle;
   });
 
-  // Formula: Constant speed time = Move time - Acc - Dec
-  const findR = (param) => { const i = data.findIndex(r => r[1] === param); return i >= 0 ? i + 1 : null; };
-  const rMove = findR('Move time (s)'), rAcc = findR('Acceleration time (s)'), rDec = findR('Deceleration time (s)'), rConst = findR('Constant speed time (s)');
-  if (rConst && rMove && rAcc && rDec)
-    ws[`D${rConst}`] = { t: 'n', f: `MAX(0,D${rMove}-IF(ISNUMBER(D${rAcc}),D${rAcc},0)-IF(ISNUMBER(D${rDec}),D${rDec},0))`, v: 0, s: helperStyle };
+  // ── SHEET 2: Motion Steps (all steps, column format) ──
+  const stepHeaders = [
+    'Step', 'Stroke (mm)', 'Move time (s)', 'Acceleration time (s)',
+    'Deceleration time (s)', 'Dwell time (s)', 'Additional force (N)',
+    'Force direction', 'Movement direction', 'Payload mass (kg)', 'Inclination angle (deg)',
+  ];
+  const stepHdrStyle = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { patternType: 'solid', fgColor: { rgb: '2F75B5' } } };
+  const stepInputStyle = { fill: { patternType: 'solid', fgColor: { rgb: 'E2F0D9' } } };
+  const steps = (Array.isArray(state.steps) && state.steps.length) ? state.steps : DEFAULT_STATE.steps;
+  const stepDataRows = steps.map((s, i) => [
+    s.label || `Step ${i + 1}`,
+    s.stroke ?? 0, s.move_time ?? 1,
+    s.acceleration_time ?? '', s.deceleration_time ?? '',
+    s.dwell_time ?? 0, s.external_force ?? 0,
+    s.external_force_dir || 'opposing',
+    (s.movement_dir || 'against_gravity').replace('_', ' '),
+    s.load_mass ?? 0, s.tilt_deg ?? 0,
+  ]);
+  const wsS = XLSX.utils.aoa_to_sheet([stepHeaders, ...stepDataRows]);
+  wsS['!cols'] = stepHeaders.map(() => ({ wch: 22 }));
+  stepHeaders.forEach((_, ci) => {
+    const cell = wsS[XLSX.utils.encode_cell({ r: 0, c: ci })];
+    if (cell) cell.s = stepHdrStyle;
+  });
+  stepDataRows.forEach((_, ri) => {
+    stepHeaders.forEach((_, ci) => {
+      const cell = wsS[XLSX.utils.encode_cell({ r: ri + 1, c: ci })];
+      if (cell) cell.s = stepInputStyle;
+    });
+  });
 
-  const wb = { SheetNames: ['User input'], Sheets: { 'User input': ws } };
+  const wb = { SheetNames: ['Parameters', 'Motion Steps'], Sheets: { 'Parameters': wsP, 'Motion Steps': wsS } };
   const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array', cellStyles: true });
   const blob = new Blob([buf], { type: 'application/octet-stream' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = 'titan-project-template.xlsx';
+  a.href = url; a.download = 'titan-input-template.xlsx';
   document.body.appendChild(a); a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
@@ -428,7 +484,10 @@ function normalizeState() {
   state.bs_n_support_blocks    = Math.max(1, Math.round(Number(state.bs_n_support_blocks) || 1));
   state.bs_support_drag_axial  = Math.max(0, Number(state.bs_support_drag_axial)  || 0);
   state.bs_support_drag_radial = Math.max(0, Number(state.bs_support_drag_radial) || 0);
-  state.has_counterbalance     = Number(state.has_counterbalance) === 0 ? 0 : 1;
+  const _cbV = state.has_counterbalance;
+  if (!_cbV || _cbV === 0 || _cbV === '0' || _cbV === 'none') state.has_counterbalance = 0;
+  else if (_cbV === 1 || _cbV === true || _cbV === 'yes') state.has_counterbalance = 'guide_shaft';
+  // else keep 'guide_shaft' or 'pulley' as is
   state.cb_mass                = Math.max(0, Number(state.cb_mass) || 0);
   state.cb_angle_deg           = Number(state.cb_angle_deg) || 90;
   state.cb_mu                  = Math.max(0, Number(state.cb_mu) || 0);
@@ -541,7 +600,7 @@ function calculateStepGroup(steps) {
     const F_friction       = F_pl + F_ffp + F_cb_friction;
 
     let F_counterbalance   = 0;
-    if (Number(state.has_counterbalance)) {
+    if (state.has_counterbalance && state.has_counterbalance !== 0) {
       const theta_cb     = state.cb_angle_deg * Math.PI / 180;
       const F_cb_raw     = state.cb_mass * G * (Math.sin(theta_cb) + state.cb_mu * Math.cos(theta_cb));
       F_counterbalance   = -gravity_sign * F_cb_raw; // always opposite to payload gravity sign
@@ -854,11 +913,11 @@ function renderSelectedMotorDetails(result) {
 
 /* Calculate total system accuracy — exact Excel formula (calc C208) */
 function calculateSystemAccuracy() {
-  const bs_acc   = state.bs_repetition_accuracy || 10; // micron (calc C198)
-  const gb_deg   = (state.gb_backlash || 0) / 60;      // arcmin → degrees
-  const gb_acc   = (gb_deg / 360 * state.bs_pitch) / 2 * 1000; // micron (calc C203)
+  const bs_acc   = numberOrDefault(state.bs_repetition_accuracy, 10); // micron (calc C198)
+  const gb_deg   = numberOrDefault(state.gb_backlash, 0) / 60;         // arcmin → degrees
   const motor_mm = state.bs_pitch / (state.sm_encoder_ppr || 1048576); // mm/pulse (calc C205)
   const motor_acc = motor_mm / 2 * 1000; // micron (calc C206)
+  const gb_acc   = (gb_deg / 360 * state.bs_pitch) / 2 * 1000; // micron (calc C203)
   return bs_acc + gb_acc + motor_acc; // calc C208 — linear sum
 }
 
@@ -1020,14 +1079,8 @@ function renderGearboxSuggestion(result) {
   }
 
   const best = viableRows[0];
-  if (Number(state.has_gearbox) !== 0 && !state.gb_ratio_user_selected && state.gb_ratio !== best.ratio) {
-    state.gb_ratio = best.ratio;
-    const inp = document.querySelector('[data-key="gb_ratio"]');
-    if (inp) inp.value = best.ratio;
-    saveState();
-    render();
-    return;
-  }
+  // Never silently overwrite the user's GB ratio — only show a suggestion.
+  // The user must explicitly click "Use Recommended" to apply a different ratio.
 
   const direct = viableRows.find(r => r.ratio === 1);
   const directTorque = direct ? direct.motorTorque : viableRows[viableRows.length - 1].motorTorque;
@@ -1177,7 +1230,7 @@ function renderMovementSteps() {
           </label>
         </div>
         <div class="field-row">
-          <label data-tip="External process or tooling force acting on the load along the axis of motion (N)">Ext. force (N)
+          <label data-tip="Additional force acting on the axis (N)">Additional force (N)
             <input data-step="${index}" data-field="external_force" type="number" step="1" value="${step.external_force}" style="padding:8px 10px;font-size:13px;" />
           </label>
         </div>
@@ -1278,6 +1331,14 @@ function renderInputs() {
   });
   updateMechanicalVisibility();
   renderMovementSteps();
+  // Item 8: warn if ball screw length < maximum motion step stroke
+  const maxStroke = Math.max(0, ...state.steps.map(s => Number(s.stroke) || 0));
+  const bsLenWarn = document.getElementById('bs-length-warn');
+  const bsMaxStrokeVal = document.getElementById('bs-max-stroke-val');
+  if (bsLenWarn && bsMaxStrokeVal) {
+    bsMaxStrokeVal.textContent = maxStroke.toFixed(1);
+    bsLenWarn.style.display = (maxStroke > 0 && (Number(state.bs_length) || 0) < maxStroke) ? 'block' : 'none';
+  }
 }
 
 function updateMechanicalVisibility() {
@@ -1294,8 +1355,8 @@ function updateMechanicalVisibility() {
   const hasLM       = Number(state.has_lm_guide) !== 0;
   const hasParallel = Number(state.has_parallel_kit) !== 0;
   const hasGearbox  = Number(state.has_gearbox) !== 0;
-  const hasCB       = Number(state.has_counterbalance) !== 0;
-  const cbType      = projCfg?.counterbalance || 'guide_shaft'; // 'pulley' | 'guide_shaft' | 'none'
+  const hasCB       = !!state.has_counterbalance && state.has_counterbalance !== 0;
+  const cbType      = (hasCB && typeof state.has_counterbalance === 'string') ? state.has_counterbalance : (projCfg?.counterbalance || 'guide_shaft');
 
   if (guideBlock)        guideBlock.style.display        = hasLM      ? '' : 'none';
   if (parallelBlock)     parallelBlock.style.display     = hasParallel ? '' : 'none';
@@ -1346,6 +1407,21 @@ function setExcelStatus(message, isError = false) {
   status.style.color = isError ? '#b91c1c' : '#111827';
 }
 
+function setExcelTrace(trace) {
+  const el = document.getElementById('excel-trace');
+  if (!el) return;
+  if (!trace) {
+    el.textContent = '';
+    return;
+  }
+  const parts = [];
+  if (trace.sheetName) parts.push(trace.sheetName);
+  if (trace.rowNumber != null) parts.push(`row ${trace.rowNumber}`);
+  if (trace.label) parts.push(`"${trace.label}"`);
+  if (trace.value != null) parts.push(`= ${trace.value}`);
+  el.textContent = parts.length ? `Trace: ${parts.join(' · ')}` : '';
+}
+
 function normalizeLabel(label) {
   return String(label || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
@@ -1392,40 +1468,61 @@ function parseExcelStepRows(rows) {
   const headers = rows[headerRowIndex].map(cell => normalizeLabel(cell));
   const columnMap = new Map();
   headers.forEach((label, index) => {
-    if (label.includes('application') || label.includes('operation') || label.includes('axis name') || label.includes('appl') || label.includes('stn no')) columnMap.set(index, 'label');
-    else if (label.includes('stroke')) columnMap.set(index, 'stroke');
-    else if (label.includes('move time')) columnMap.set(index, 'move_time');
-    else if (label.includes('acceleration time')) columnMap.set(index, 'acceleration_time');
+    // Order: most-specific first to avoid false substring matches
+    if (label.includes('acceleration time')) columnMap.set(index, 'acceleration_time');
     else if (label.includes('deceleration time') || label.includes('decceleration time')) columnMap.set(index, 'deceleration_time');
-    else if (label.includes('acc') || label.includes('acceleration')) columnMap.set(index, '_ignore_acc');
-    else if (label.includes('external force') || label.includes('f pick') || label.includes('f load') || label.includes('f return')) columnMap.set(index, 'external_force');
-    else if (label.includes('load mass') || label.includes('moving mass') || label.includes('payload mass')) columnMap.set(index, 'load_mass');
-    else if (label.includes('tilt') || label.includes('orientation') || label.includes('theta')) columnMap.set(index, 'tilt_deg');
+    else if (label.includes('dwell')) columnMap.set(index, 'dwell_time');
+    else if (label.includes('move time') || label.includes('total time')) columnMap.set(index, 'move_time');
+    else if (label.includes('stroke')) columnMap.set(index, 'stroke');
+    else if (label.includes('movement direction') || label.includes('movement dir') || label.includes('payload movement')) columnMap.set(index, 'movement_dir');
+    else if (label.includes('force direction') || label.includes('ext force dir') || label.includes('force dir')) columnMap.set(index, 'external_force_dir');
+    else if (label.includes('additional force') || label.includes('external force') || label.includes('f pick') || label.includes('f load') || label.includes('f return')) columnMap.set(index, 'external_force');
+    else if (label.includes('payload mass') || label.includes('load mass') || label.includes('moving mass')) columnMap.set(index, 'load_mass');
+    else if (label.includes('inclination') || label.includes('tilt') || label.includes('angle') || label.includes('orientation') || label.includes('theta')) columnMap.set(index, 'tilt_deg');
+    else if (label === 'step' || label.includes('label') || label.includes('axis name') || label.includes('appl') || label.includes('stn no') || label.includes('application') || label.includes('operation')) columnMap.set(index, 'label');
+    else if (label.includes('acc')) columnMap.set(index, '_ignore_acc');
   });
+
+  // Text fields that need string values (not numeric conversion)
+  const TEXT_COL_FIELDS = new Set(['label', 'external_force_dir', 'movement_dir']);
 
   const steps = [];
   for (let i = headerRowIndex + 1; i < rows.length; i += 1) {
     const row = rows[i];
     if (!Array.isArray(row) || row.every(cell => cell === null || cell === undefined || String(cell).trim() === '')) {
-      // An empty row after at least one step means the step table has ended.
       if (steps.length > 0) break;
       continue;
     }
-    const step = { stroke: 0, move_time: 0.05, acceleration_time: null, deceleration_time: null, external_force: 0, load_mass: 0, tilt_deg: 0 };
+    const step = {
+      stroke: 0, move_time: 0.05, dwell_time: 0,
+      acceleration_time: null, deceleration_time: null,
+      external_force: 0, external_force_dir: 'opposing',
+      movement_dir: 'against_gravity', load_mass: 0, tilt_deg: 0,
+    };
     let rowHasData = false;
 
     for (const [col, field] of columnMap.entries()) {
       if (col >= row.length) continue;
       const cell = row[col];
-      if (field === 'label') {
-        const text = String(cell || '').trim();
-        if (text) step[field] = text;
-        // label alone does NOT mark a row as having step data — numeric fields required
+      const raw = cell === null || cell === undefined ? '' : String(cell).trim();
+      if (!raw) continue;
+
+      if (field === '_ignore_acc') continue;
+
+      if (TEXT_COL_FIELDS.has(field)) {
+        if (field === 'external_force_dir') {
+          step.external_force_dir = raw.toLowerCase().includes('aid') ? 'aiding' : 'opposing';
+          rowHasData = true;
+        } else if (field === 'movement_dir') {
+          step.movement_dir = (raw.toLowerCase().includes('with') || raw.toLowerCase().includes('aid')) ? 'with_gravity' : 'against_gravity';
+          rowHasData = true;
+        } else {
+          step.label = raw; // label field — doesn't count as data by itself
+        }
         continue;
       }
-      if (field === '_ignore_acc') continue;
-      const raw = cell === null || cell === undefined ? '' : String(cell);
-      const value = raw.trim() === '' ? NaN : Number(raw.replace(/[^0-9.eE+-]/g, ''));
+
+      const value = Number(raw.replace(/[^0-9.eE+-]/g, ''));
       if (!Number.isNaN(value)) {
         step[field] = value;
         rowHasData = true;
@@ -1440,13 +1537,16 @@ function parseExcelStepRows(rows) {
   if (steps.length > 0) {
     state.steps = steps.map((step, index) => ({
       label: String(step.label || `Step ${index + 1}`),
-      stroke: step.stroke,
-      move_time: step.move_time,
+      stroke: Math.max(0, Number(step.stroke) || 0),
+      move_time: Math.max(0, Number(step.move_time) || 0.05),
+      dwell_time: Math.max(0, Number(step.dwell_time) || 0),
       acceleration_time: step.acceleration_time,
       deceleration_time: step.deceleration_time,
-      external_force: step.external_force,
-      load_mass: step.load_mass,
-      tilt_deg: step.tilt_deg,
+      external_force: Number(step.external_force) || 0,
+      external_force_dir: step.external_force_dir || 'opposing',
+      movement_dir: step.movement_dir || 'against_gravity',
+      load_mass: Math.max(0, Number(step.load_mass) || 0),
+      tilt_deg: Number(step.tilt_deg) || 0,
     }));
     return steps.length;
   }
@@ -1454,10 +1554,16 @@ function parseExcelStepRows(rows) {
   return 0;
 }
 
-function parseExcelValues(rows) {
-  const stepsFromTable = parseExcelStepRows(rows);
+function parseExcelValues(rows, preloadedSteps = 0, sheetName = '') {
+  const stepsFromTable = preloadedSteps > 0 ? preloadedSteps : parseExcelStepRows(rows);
   const bearingTableUpdated = parseBearingDragTable(rows);
   let updated = stepsFromTable + bearingTableUpdated;
+  const assignedKeys = new Set();
+  const assignOnce = key => {
+    if (assignedKeys.has(key)) return false;
+    assignedKeys.add(key);
+    return true;
+  };
 
   // calc sheet: col A=index0 (section heading), col B=index1 (label), col C=index2 (value)
   // Try col B as label, col C as value first; fall back to col A / col B for other sheets
@@ -1472,6 +1578,8 @@ function parseExcelValues(rows) {
     ['working days per week',                   'project_days_week'],
     ['total cycle time of machine',             'project_total_cycle'],
     ['total operating time per cycle',          'project_operating_time'],
+    ['axis on-time per cycle',                  'project_operating_time'],
+    ['axis on time per cycle',                  'project_operating_time'],
     ['expected service life of machine',        'project_service_life'],
     ['movement accuracy required',              'project_accuracy'],
     ['project accuracy',                        'project_accuracy'],
@@ -1483,6 +1591,8 @@ function parseExcelValues(rows) {
     ['acceleration time',                       'acceleration_time'],
     ['deceleration time',                       'deceleration_time'],
     ['decceleration time',                      'deceleration_time'],
+    ['additional force acting on the axis',      'external_force'],
+    ['additional force',                         'external_force'],
     ['external force on the moving mass',       'external_force'],
     ['external force direction',                '_text_external_force_dir'],
     // Specific inclination labels before generic 'inclination angle'
@@ -1552,6 +1662,7 @@ function parseExcelValues(rows) {
     ['ball screw nut mass',                     'bs_nut_mass'],
     ['bs nut mass',                             'bs_nut_mass'],
     ['ball screw length',                       'bs_length'],
+    ['ball screw rod length',                   'bs_length'],
     ['bs length',                               'bs_length'],
     ['ball screw material',                     '_text_bs_material'],
     ['bs material',                             '_text_bs_material'],
@@ -1565,6 +1676,10 @@ function parseExcelValues(rows) {
     // LM Guide
     ['lm guide present',                        '_text_has_lm_guide'],
     ['lm guide needed',                         '_text_has_lm_guide'],
+    ['parallel kit needed',                     '_text_has_parallel_kit'],
+    ['parallel kit present',                    '_text_has_parallel_kit'],
+    ['gearbox needed',                          '_text_has_gearbox'],
+    ['gearbox present',                         '_text_has_gearbox'],
     ['fixture / carriage mass',                 'guide_mass'],
     ['fixture carriage mass',                   'guide_mass'],
     ['max withstand force',                     'guide_max_force'],
@@ -1581,6 +1696,7 @@ function parseExcelValues(rows) {
     ['counterbalance friction coefficient',     'cb_mu'],
     ['linear bush friction force (counterbalance)','cb_bushing_friction_force'],
     ['linear bush friction force counterbalance','cb_bushing_friction_force'],
+    ['linear bush friction force',              'cb_bushing_friction_force'],
     ['number of linear bushings (counterbalance)','cb_n_bushings'],
     ['no of linear bushings counterbalance',    'cb_n_bushings'],
     // Parallel kit
@@ -1598,11 +1714,14 @@ function parseExcelValues(rows) {
     ['max. rotational speed',                   'pk_max_speed'],
     // Gearbox
     ['selected gear ratio',                     'gb_ratio'],
+    ['gearbox ratio',                           'gb_ratio'],
     ['gb- efficiency',                          'gb_efficiency_pct'],  // % → convert
     ['gb - efficiency',                         'gb_efficiency_pct'],
     ['gearbox efficiency',                      'gb_efficiency_pct'],
     ['gb-backlash',                             'gb_backlash'],
     ['gb - backlash',                           'gb_backlash'],
+    ['gb backlash',                             'gb_backlash'],
+    ['gearbox backlash',                        'gb_backlash'],
     ['gb- no load running torque',              'gb_no_load_torque'],
     ['gb - no load running torque',             'gb_no_load_torque'],
     ['gearbox  - inertia',                      'gb_inertia'],
@@ -1633,6 +1752,10 @@ function parseExcelValues(rows) {
     ['external force',                          'external_force'],
     ['no carriage blocks',                      'guide_n_blocks'],
     ['friction coeff lm guide',                 'mu'],
+    ['friction coefficient lm guide',           'mu'],
+    ['mass per carriage block',                 'guide_block_mass'],
+    ['ball screw precision',                    'bs_repetition_accuracy'],
+    ['position accuracy',                       'bs_repetition_accuracy'],
     ['cb mass',                                 'cb_mass'],
     ['cb inclination',                          'cb_angle_deg'],
     ['cb friction coeff',                       'cb_mu'],
@@ -1641,6 +1764,10 @@ function parseExcelValues(rows) {
     ['bs efficiency',                           'bs_efficiency_pct'],
     ['bs inertia',                              '_ignore'],
     ['bs diameter',                             'bs_dia'],
+    ['gearbox accuracy',                        '_ignore'],
+    ['motor accuracy',                          '_ignore'],
+    ['total accuracy of the system',            '_ignore'],
+    ['movement accuracy calc',                  '_ignore'],
     ['pk ratio',                                'pk_ratio'],
     ['pk no load',                              'pk_no_load_torque'],
     ['pk inertia',                              'pk_inertia'],
@@ -1659,9 +1786,12 @@ function parseExcelValues(rows) {
     ['accuracy',                                'project_accuracy'],
     ['counterbalance exists',                   '_text_has_counterbalance'],
     ['bearing drag torque',                     'bs_bearing_drag_torque'],
-    // Guide friction force (typo variants from user's working file)
+    // Guide friction force variants (per-block friction force)
     ['lm guide frcition force',                 'guide_force'],
-    ['lm guide friction force',                 'guide_force'],
+    ['friction force per carriage block',        'guide_force'],
+    ['friction force per block',                 'guide_force'],
+    // LM guide max/rated force (guide_max_force — was "max withstand force")
+    ['lm guide friction force',                  'guide_max_force'],
     // Counterbalance presence and mass (from working file)
     ['counter balance exists',                  '_text_has_counterbalance'],
     ['mass of the counterbalance',              'cb_mass'],
@@ -1701,33 +1831,41 @@ function parseExcelValues(rows) {
 
     // Layout A: col1 = label, col2 = value (simple calc sheet)
     // Layout A2: col1 = label, col2 = symbol string, col3 = unit, col4 = value (detailed calc sheet)
-    // Layout A3 (new template): col0=group, col1=label, col2=notes, col3=value
-    // If col2 is a non-numeric string, fall back to col3 then col4.
+    // Layout A3 (new template): col0=group, col1=label, col2=notes, col3+=value/station columns
+    // If col2 is a non-numeric string (notes), scan col3 onward for the first non-empty value.
     const keyA = tryMatch(row[1]);
     if (keyA) {
       const v2 = row[2];
       const v2IsNumeric = typeof v2 === 'number' ||
         (v2 !== undefined && v2 !== null && v2 !== '' && !isNaN(Number(String(v2).trim())));
-      const v3 = row[3];
-      const v3HasValue = v3 !== undefined && v3 !== null && v3 !== '';
-      const v4 = row[4];
-      const v4HasValue = v4 !== undefined && v4 !== null && v4 !== '';
-      const value = !v2IsNumeric && v3HasValue ? v3 : !v2IsNumeric && v4HasValue ? v4 : v2;
-      return { key: keyA, value };
+      let value = v2;
+      if (!v2IsNumeric) {
+        // Notes column detected — scan remaining columns for the first non-empty value
+        for (let ci = 3; ci < row.length; ci++) {
+          const v = row[ci];
+          if (v !== undefined && v !== null && v !== '') { value = v; break; }
+        }
+      }
+      if (keyA === 'gb_backlash') console.log('[CV] backlash row cols:', JSON.stringify(row), '→ value:', value);
+      return { key: keyA, value, label: row[1] };
     }
 
     // Layout B: col0 = label, col1 = value (old template)
-    // Layout B2: col0 = label, col1 = notes (descriptive string), col2 = value (new template)
+    // Layout B2: col0 = label, col1 = notes (descriptive string), col2+ = value (new template)
     const keyB = tryMatch(row[0]);
     if (keyB) {
-      // If col1 looks like a notes string (non-numeric, non-empty, col2 has a real value) → new format
       const col1 = row[1];
-      const col2 = row[2];
       const col1IsNotes = col1 !== undefined && col1 !== null && col1 !== '' &&
         typeof col1 === 'string' && isNaN(Number(String(col1).trim()));
-      const col2HasValue = col2 !== undefined && col2 !== null && col2 !== '';
-      const value = (col1IsNotes && col2HasValue) ? col2 : col1;
-      return { key: keyB, value };
+      let value = col1;
+      if (col1IsNotes) {
+        for (let ci = 2; ci < row.length; ci++) {
+          const v = row[ci];
+          if (v !== undefined && v !== null && v !== '') { value = v; break; }
+        }
+      }
+      if (keyB === 'gb_backlash') console.log('[CV] backlash row (B) cols:', JSON.stringify(row), '→ value:', value);
+      return { key: keyB, value, label: row[0] };
     }
 
     return null;
@@ -1770,15 +1908,17 @@ function parseExcelValues(rows) {
   // The Map maps it to 'guide_mass'; we intercept the first hit as load_mass for steps[0].
   let movingMassHits = 0;
 
-  for (const row of allRows) {
+  for (let rowIndex = 0; rowIndex < allRows.length; rowIndex++) {
+    const row = allRows[rowIndex];
     if (!row || row.length < 2) continue;
 
     const match = resolveRow(row);
     if (!match || match.key === '_ignore') continue;
 
-    let { key, value } = match;
+    let { key, value, label: sourceLabel } = match;
 
     if (TEXT_FIELDS.has(key)) {
+      if (!assignOnce(key)) continue;
       const textValue = String(value || '').trim();
       if (textValue) {
         state[key] = textValue;
@@ -1789,6 +1929,7 @@ function parseExcelValues(rows) {
 
     // Text direction fields — map human-readable strings to state enum values
     if (STEP_TEXT_FIELDS.has(key)) {
+      if (!assignOnce(key)) continue;
       const raw = String(value || '').toLowerCase().trim();
       if (key === '_text_external_force_dir') {
         const dir = raw.includes('aid') ? 'aiding' : 'opposing';
@@ -1804,21 +1945,46 @@ function parseExcelValues(rows) {
 
     // LM Guide present: yes → 1, no → 0
     if (key === '_text_has_lm_guide') {
+      if (!assignOnce(key)) continue;
       const raw = String(value || '').toLowerCase().trim();
       state.has_lm_guide = raw.includes('yes') ? 1 : 0;
       updated++;
       continue;
     }
 
-    // Counterbalance present: yes → 1, no → 0
-    if (key === '_text_has_counterbalance') {
+    // Parallel Kit needed: yes → 1, no → 0
+    if (key === '_text_has_parallel_kit') {
+      if (!assignOnce(key)) continue;
       const raw = String(value || '').toLowerCase().trim();
-      state.has_counterbalance = raw.includes('yes') ? 1 : 0;
+      state.has_parallel_kit = raw.includes('yes') ? 1 : 0;
+      updated++;
+      continue;
+    }
+
+    // Gearbox needed: yes → 1, no → 0
+    if (key === '_text_has_gearbox') {
+      if (!assignOnce(key)) continue;
+      const raw = String(value || '').toLowerCase().trim();
+      state.has_gearbox = raw.includes('yes') ? 1 : 0;
+      console.log('[CV] _text_has_gearbox: raw=', JSON.stringify(raw), '→ has_gearbox=', state.has_gearbox);
+      updated++;
+      continue;
+    }
+
+    // Counterbalance present: none/no → 0, guide_shaft → 'guide_shaft', pulley → 'pulley', yes → 'guide_shaft'
+    if (key === '_text_has_counterbalance') {
+      if (!assignOnce(key)) continue;
+      const raw = String(value || '').toLowerCase().trim();
+      if (raw === 'guide_shaft' || raw.includes('guide') || raw.includes('shaft')) state.has_counterbalance = 'guide_shaft';
+      else if (raw === 'pulley' || raw.includes('pulley')) state.has_counterbalance = 'pulley';
+      else if (raw.includes('yes')) state.has_counterbalance = 'guide_shaft'; // legacy yes → guide_shaft
+      else state.has_counterbalance = 0;
       updated++;
       continue;
     }
 
     if (key === '_text_bs_material') {
+      if (!assignOnce(key)) continue;
       const raw = String(value || '').toLowerCase().trim();
       if (raw.includes('stainless') || raw.includes('ss')) state.bs_material = 'stainless';
       else if (raw.includes('alum') || raw.includes('al')) state.bs_material = 'aluminum';
@@ -1833,6 +1999,7 @@ function parseExcelValues(rows) {
 
     // "moving mass": first hit → payload (steps[0].load_mass), second hit → guide_mass
     if (key === 'guide_mass') {
+      if (!assignOnce(key)) continue;
       if (stepsFromTable === 0 && movingMassHits === 0) {
         importedStep.load_mass = parsed;
         updated++;
@@ -1846,32 +2013,55 @@ function parseExcelValues(rows) {
 
     // Unit conversions and special keys
     if (key === 'bs_max_speed_mms') {
+      if (!assignOnce(key)) continue;
       if (state.bs_pitch > 0) { state.bs_max_speed = (parsed / state.bs_pitch) * 60; updated++; }
       continue;
     }
     if (key === 'bs_efficiency_pct') {
+      if (!assignOnce(key)) continue;
       state.bs_efficiency = parsed > 1 ? parsed / 100 : parsed; updated++; continue;
     }
     if (key === 'gb_efficiency_pct') {
+      if (!assignOnce(key)) continue;
       state.gb_efficiency = parsed > 1 ? parsed / 100 : parsed; updated++; continue;
     }
+    if (key === 'gb_backlash') {
+      if (!assignOnce(key)) continue;
+      state.gb_backlash = parsed;
+      console.log('[CV] gb_backlash set to', parsed, 'from label=', sourceLabel, 'value=', value);
+      lastExcelImportTrace = {
+        sheetName: sheetName || 'Excel',
+        rowNumber: rowIndex + 1,
+        label: String(sourceLabel ?? row[0] ?? row[1] ?? '').trim(),
+        value: parsed,
+        key,
+      };
+      updated++;
+      continue;
+    }
     if (key === 'pk_inertia_mm2') {
+      if (!assignOnce(key)) continue;
       state.pk_inertia = parsed * 1e-6; updated++; continue;
     }
     if (key === 'acc_pct') {
+      if (!assignOnce(key)) continue;
       state.acc_pct = parsed <= 1 ? parsed * 100 : parsed; updated++; continue;
     }
     if (key === 'safety_factor') {
+      if (!assignOnce(key)) continue;
       state.safety_factor = parsed <= 1 ? parsed * 100 : parsed; updated++; continue;
     }
 
     // Collect step-level fields separately (only when no step table was parsed)
     if (STEP_FIELDS.has(key) && stepsFromTable === 0) {
+      if (!assignOnce(key)) continue;
       importedStep[key] = parsed;
       updated++;
       continue;
     }
 
+    if (key === 'gb_ratio') console.log('[CV] gb_ratio set to', parsed, 'from value=', value);
+    if (!assignOnce(key)) continue;
     state[key] = parsed;
     updated++;
   }
@@ -1898,27 +2088,89 @@ function loadExcelFile(file) {
   const reader = new FileReader();
   reader.onload = event => {
     try {
+      lastExcelImportTrace = null;
       const data = new Uint8Array(event.target.result);
       const workbook = XLSX.read(data, { type: 'array' });
-      // Read 'calc' sheet by name (labels in col B = index 1, values in col C = index 2)
-      const sheetName = workbook.SheetNames.find(n => n.toLowerCase() === 'calc') || workbook.SheetNames[0];
-      const sheet = workbook.Sheets[sheetName];
-      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false });
-      const updated = parseExcelValues(rows);
-      if (updated > 0) {
+      const sheetNames = workbook.SheetNames;
+
+      // ── Sheet 2: Motion Steps (column format) ──
+      // Detect a dedicated motion steps sheet by name.
+      const stepSheetName = sheetNames.find(n => {
+        const nl = n.toLowerCase();
+        return nl === 'motion steps' || nl === 'steps' || nl === 'motion step';
+      });
+      let stepsUpdated = 0;
+      if (stepSheetName) {
+        const stepSheet = workbook.Sheets[stepSheetName];
+        const stepRows = XLSX.utils.sheet_to_json(stepSheet, { header: 1, blankrows: true });
+        stepsUpdated = parseExcelStepRows(stepRows);
+      }
+
+      // ── Sheet 1: Parameters (row format — all mechanical & operating inputs) ──
+      // Parse every recognized input sheet in priority order. Some workbooks split
+      // true inputs across "calc" and "User input", so we intentionally read both
+      // and let the more user-authored sheets win.
+      const paramSheetNames = [
+        sheetNames.find(n => n.toLowerCase() === 'calc'),
+        sheetNames.find(n => n.toLowerCase() === 'parameters'),
+        sheetNames.find(n => n.toLowerCase() === 'user input'),
+      ].filter((name, index, arr) => name && arr.indexOf(name) === index && name !== stepSheetName);
+      if (paramSheetNames.length === 0) {
+        const fallback = sheetNames.find(n => n !== stepSheetName);
+        if (fallback) paramSheetNames.push(fallback);
+      }
+
+      let paramUpdated = 0;
+      for (const paramSheetName of paramSheetNames) {
+        const paramSheet = workbook.Sheets[paramSheetName];
+        if (!paramSheet) continue;
+        const paramRows = XLSX.utils.sheet_to_json(paramSheet, { header: 1, blankrows: true });
+        paramUpdated += parseExcelValues(paramRows, stepsUpdated, paramSheetName);
+      }
+
+
+      const totalUpdated = stepsUpdated + paramUpdated;
+
+      // Debug: log key parsed values to browser console and status
+      console.log('[CV Import] sheets:', sheetNames,
+        '| paramSheets:', paramSheetNames.join(', ') || '(none)', '| stepSheet:', stepSheetName,
+        '| stepsUpdated:', stepsUpdated, '| paramUpdated:', paramUpdated);
+      console.log('[CV Import] Key values after parse:',
+        'has_gearbox=', state.has_gearbox,
+        'gb_ratio=', state.gb_ratio,
+        'has_parallel_kit=', state.has_parallel_kit,
+        'pk_ratio=', state.pk_ratio,
+        'has_lm_guide=', state.has_lm_guide,
+        'bs_pitch=', state.bs_pitch,
+        'bs_efficiency=', state.bs_efficiency,
+        'has_counterbalance=', state.has_counterbalance);
+
+      if (totalUpdated > 0) {
         saveState();
         renderInputs();
-        render();  // triggers suggestBestMotor() → auto-selects servo drive
+        render();
         const motorMsg = selectedMotorIdx >= 0 && MOTOR_DB[selectedMotorIdx]
-          ? ` Servo drive auto-selected: ${MOTOR_DB[selectedMotorIdx].pn}.`
+          ? ` Motor: ${MOTOR_DB[selectedMotorIdx].pn}.` : '';
+        const sheets = [...paramSheetNames, stepSheetName].filter(Boolean).join(' + ');
+        const gbMsg = Number(state.has_gearbox)
+          ? ` GB: ratio=${state.gb_ratio}, backlash=${state.gb_backlash} arcmin.`
           : '';
-        setExcelStatus(`Imported ${updated} value(s) from Excel (sheet: ${sheetName}).${motorMsg}`);
+        setExcelStatus(`Imported ${totalUpdated} value(s) from "${sheets}".${gbMsg}${motorMsg}`);
+        if (!lastExcelImportTrace) console.log('[CV] gb_backlash: not matched in this file — backlash stays at', state.gb_backlash);
+        setExcelTrace(lastExcelImportTrace || {
+          sheetName: sheets || 'Excel',
+          rowNumber: null,
+          label: 'gb_backlash',
+          value: 'not matched in this file',
+        });
       } else {
-        setExcelStatus('No matching labels were found in the Excel file.', true);
+        setExcelStatus('No matching fields found in the uploaded file.', true);
+        setExcelTrace(null);
       }
     } catch (error) {
       console.error(error);
-      setExcelStatus('Excel file could not be parsed.', true);
+      setExcelStatus('File could not be parsed. Check it is an .xlsx file.', true);
+      setExcelTrace(null);
     }
   };
   reader.readAsArrayBuffer(file);
@@ -1983,6 +2235,27 @@ function restoreState() {
   loadState();
   selectedMotorIdx = Number(localStorage.getItem('titanServoSelectedMotor') || -1);
   if (selectedMotorIdx < 0 || selectedMotorIdx >= MOTOR_DB.length) selectedMotorIdx = -1;
+
+  // Sync component presence flags from the project configurator settings.
+  // projCfg is authoritative for which hardware is on the axis.
+  const _ctx = (typeof Projects !== 'undefined') ? Projects.getContext() : null;
+  const _cfg = _ctx ? (Projects.get(_ctx.projectId)?.config || null) : null;
+  if (_cfg) {
+    if (_cfg.has_gearbox)      state.has_gearbox      = 1;
+    if (_cfg.has_parallel_kit) state.has_parallel_kit = 1;
+    if (_cfg.has_lm_guide !== undefined) state.has_lm_guide = _cfg.has_lm_guide ? 1 : 0;
+    // Always apply counterbalance type from configurator — ensures stale numeric
+    // has_counterbalance = 1 (old format) doesn't leave the select blank.
+    if (_cfg.counterbalance === 'none') {
+      state.has_counterbalance = 0;
+    } else if (_cfg.counterbalance === 'guide_shaft' || _cfg.counterbalance === 'pulley') {
+      state.has_counterbalance = _cfg.counterbalance;
+    }
+  }
+
+  // Normalise state before the first renderInputs() call so the selects always
+  // receive a value that matches one of their options.
+  normalizeState();
 }
 
 function saveMotorSelection() {
@@ -2023,6 +2296,7 @@ function init() {
       const file = event.target.files[0];
       if (file) {
         loadExcelFile(file);
+        event.target.value = '';
       }
     });
   }
@@ -2063,6 +2337,7 @@ function init() {
       downloadExcelTemplate();
     });
   }
+
 
   document.getElementById('motor-table-body').addEventListener('click', event => {
     const row = event.target.closest('tr[data-index]');
@@ -2136,7 +2411,8 @@ function injectProjectContextBanner() {
       let metrics = null;
       if (selectedMotorIdx >= 0 && selectedMotorIdx < MOTOR_DB.length && lastResult) {
         const m = MOTOR_DB[selectedMotorIdx];
-        const permRatio = (servoState && servoState.sm_permitted_inertia_ratio) || 7;
+        const permRatioValue = toFiniteNumber(servoState?.sm_permitted_inertia_ratio);
+        const permRatio = permRatioValue && permRatioValue > 0 ? permRatioValue : 7;
         metrics = {
           Nmotor: Math.round(lastResult.Nmotor),
           T_peak_motor: +lastResult.T_peak_motor.toFixed(3),
@@ -2475,7 +2751,7 @@ function renderTorqueChart() {
     const F_cb_fr    = (Number(state.cb_n_bushings) || 0) * (Number(state.cb_bushing_friction_force) || 0);
     const F_fric_c   = F_pl_c + state.guide_n_blocks * state.guide_force + F_cb_fr;
     let F_cb = 0;
-    if (Number(state.has_counterbalance)) {
+    if (state.has_counterbalance && state.has_counterbalance !== 0) {
       const th_cb = state.cb_angle_deg * Math.PI / 180;
       F_cb = -grav_sign * state.cb_mass * 9.81 * (Math.sin(th_cb) + state.cb_mu * Math.cos(th_cb));
     }

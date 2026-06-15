@@ -557,19 +557,28 @@ function autoSelectMotor(st) {
     'carriage mass':                                  '_mass:carriage',
     'bs nut mass':                                    '_mass:nut',
     'ballscrew nut mass':                             '_mass:nut',
+    'ballscrew nut & housing mass':                   '_mass:nut',
+    'ballscrew nut and housing mass':                 '_mass:nut',
+    'fixture mass':                                   '_mass:carriage',
+    'fixture / carriage mass':                        '_mass:carriage',
     'lm guide block mass':                            '_mass:block_mass',
     'linear guide carriage block mass':               '_mass:block_mass',
+    'mass per carriage block':                        '_mass:block_mass',
     'no carriage blocks':                             '_mass:n_blocks',
+    'no. of carriage blocks':                         '_mass:n_blocks',
     'number of carriage blocks':                      '_mass:n_blocks',
     'number carriage blocks':                         '_mass:n_blocks',
     'moving mass':                                    'step:load_mass',  // fallback if no breakdown
     // Inclination & friction
-    'inclination angle':                              'step:tilt_deg',
-    'tilt angle of the setup':                        'step:tilt_deg',
-    'tilt angle':                                     'step:tilt_deg',
+    'payload inclination angle':                      'tilt_deg',
+    'inclination angle':                              'tilt_deg',
+    'tilt angle of the setup':                        'tilt_deg',
+    'tilt angle':                                     'tilt_deg',
+    'payload guide friction coeff':                   'mu',
     'friction coeff lm guide':                        'mu',
     'friction coefficient of linear guide':           'mu',
     'friction coefficient':                           'mu',
+    'friction force per carriage block':              '_friction:lm_per_block',
     'lm guide friction per block':                    '_friction:lm_per_block',
     'lm guide friction block':                        '_friction:lm_per_block',
     'lm guide friction':                              '_friction:lm_per_block',
@@ -586,9 +595,12 @@ function autoSelectMotor(st) {
     'counterbalance exists':                          '_yesno:has_counterbalance',
     'counterbalance present':                         '_yesno:has_counterbalance',
     'cb mass':                                        'cb_mass',
+    'counter balance mass':                           'cb_mass',
     'counterbalance mass':                            'cb_mass',
     'cb inclination':                                 'cb_angle_deg',
+    'counterbalance inclination angle':               'cb_angle_deg',
     'counterbalance inclination':                     'cb_angle_deg',
+    'counterbalance guide friction coeff':            'cb_mu',
     'cb friction coeff':                              'cb_mu',
     'counterbalance friction coeff':                  'cb_mu',
     'counterbalance friction coefficient':            'cb_mu',
@@ -911,6 +923,8 @@ function autoSelectMotor(st) {
                             (isNewFormat ? String(headerRow[colIdx] || '').trim() : '') ||
                             'Application 1';
             motorState.steps[0].label = appName;
+            motorState.project_stn  = stnState.stnNo  || '';
+            motorState.project_appl = stnState.applStr || '';
             return { motorState, stnState, appName };
           }
 
@@ -1092,6 +1106,8 @@ function autoSelectMotor(st) {
           if (!appName) continue; // skip rows with no station/application
 
           motorState.steps[0].label = appName;
+          motorState.project_stn  = stnNo   || '';
+          motorState.project_appl = applStr || '';
 
           // Auto-select best motor from state
           const autoResult = autoSelectMotor(motorState);
@@ -1151,55 +1167,52 @@ function autoSelectMotor(st) {
     // Layout: A=Group (coloured), B=Parameter, C=Notes, D=Station 1, E=Station 2
     // Each row: [group, label, notes, defaultVal1, defaultVal2]
     const rows = [
-      // ── General ──────────────────────────────────────────────────────────
+      // ── General / Application ─────────────────────────────────────────────
       ['General',       'Stn no',                               'Station identifier',                              'OP10',            'OP20'],
       ['General',       'Appl',                                 'Application name / description',                  'App-1',           'App-2'],
+      ['General',       'Payload Inclination angle (°)',        'Axis tilt from horizontal. min 0, max 90',         0,                 0],
       // ── Motion Step ──────────────────────────────────────────────────────
       ['Motion Step',   'Stroke (mm)',                          'Linear travel distance',                           50,                50],
       ['Motion Step',   'Move time (s)',                        'Total move time (accel + const + decel)',           1.0,               1.0],
       ['Motion Step',   'Dwell time (s)',                       'Wait time at end of stroke',                       0.1,               0.1],
-      ['Motion Step',   'Acceleration time (s)',                'Accel phase duration (leave blank to use Acc%)',   0.2,               0.2],
-      ['Motion Step',   'Deceleration time (s)',                'Decel phase duration (leave blank to use Dec%)',   0.2,               0.2],
+      ['Motion Step',   'Acceleration time (s)',                'Accel phase duration',                             0.2,               0.2],
+      ['Motion Step',   'Deceleration time (s)',                'Decel phase duration',                             0.2,               0.2],
       ['Motion Step',   'External force (N)',                   'Process or payload force on the axis',             100,               100],
       ['Motion Step',   'Ext. force direction',                 'Options: opposing / aiding',                       'opposing',        'opposing'],
       ['Motion Step',   'Payload movement direction',           'Options: against gravity / with gravity',          'against gravity', 'against gravity'],
-      ['Motion Step',   'Inclination angle (°)',                '0 = horizontal, 90 = vertical',                    0,                 0],
       ['Motion Step',   'Payload mass (kg)',                    'Mass of payload being moved',                      3.0,               3.0],
-      ['Motion Step',   'Fixture / carriage mass (kg)',         'LM guide carriage / saddle mass per block',        0.5,               0.5],
-      ['Motion Step',   'No. carriage blocks',                  'Number of LM guide carriage blocks',               2,                 2],
       // ── LM Guide ─────────────────────────────────────────────────────────
       ...(showLM ? [
         ['LM Guide',    'LM guide present',                     'Options: yes / no',                                'yes',             'yes'],
-        ['LM Guide',    'Guide block mass (kg)',                 'Mass of each guide carriage block',                0.2,               0.2],
-        ['LM Guide',    'LM guide friction per block (N)',       'Friction force per carriage block',                3.0,               3.0],
-        ['LM Guide',    'Max withstand force (N)',               'Maximum rated withstand force of LM guide',        1000,              1000],
-        ['LM Guide',    'Service life @100% load (km)',          'Rated service life at full load',                  5000,              5000],
+        ['LM Guide',    'No. of carriage blocks',               'Number of LM guide carriage blocks (n_gcb)',        2,                 2],
+        ['LM Guide',    'Mass per carriage block (kg)',          'Mass of each guide carriage block (m_gcb)',         0.2,               0.2],
+        ['LM Guide',    'Friction Force per carriage block (N)','Friction force per carriage block',                 3.0,               3.0],
+        ['LM Guide',    'Payload guide friction coeff',          'Friction coeff between payload and LM guide (μ_pg)',0.003,            0.003],
       ] : []),
       // ── Counterbalance ────────────────────────────────────────────────────
       ...(showCB ? [
         ['Counterbalance', 'Counterbalance present',            'Options: yes / no',                                'yes',             'yes'],
-        ['Counterbalance', 'CB mass (kg)',                      'Counterbalance mass',                              0,                 0],
-        ['Counterbalance', 'CB inclination (°)',                'Counterbalance inclination angle (0–90°)',          90,                90],
+        ['Counterbalance', 'Counter balance Mass (kg)',         'Counterbalance mass (m_cb)',                        0,                 0],
+        ['Counterbalance', 'Counterbalance inclination angle (°)', 'CB inclination angle (θ_cb), min 45, max 90',   90,                90],
         ...(cbType !== 'pulley' ? [
-          ['Counterbalance', 'CB friction coeff (μ)',           'Guide shaft friction coefficient',                 0.005,             0.005],
+          ['Counterbalance', 'Counterbalance guide friction coeff', 'Guide shaft friction coeff (μ_cbg)',           0.005,             0.005],
           ['Counterbalance', 'Linear bush friction force (N)',  'Friction force per linear bushing',                3.0,               3.0],
           ['Counterbalance', 'No. of linear bushings',          'Total number of linear bushings on CB',            4,                 4],
         ] : []),
       ] : []),
       // ── Ball Screw ────────────────────────────────────────────────────────
+      ['Ball Screw',    'Fixture mass (kg)',                    'Fixture / tooling plate mass (m_fix)',              0.5,               0.5],
+      ['Ball Screw',    'Ballscrew nut & housing mass (kg)',    'Ball screw nut and housing mass (m_bsn)',           0.052,             0.052],
       ['Ball Screw',    'BS lead (mm/rev)',                     'Ball screw lead per revolution',                   5,                 5],
       ['Ball Screw',    'BS diameter (mm)',                     'Ball screw shaft diameter',                         25,                25],
       ['Ball Screw',    'BS length (mm)',                       'Ball screw shaft length',                           500,               500],
       ['Ball Screw',    'BS material',                          'Options: steel / stainless / aluminum',             'steel',           'steel'],
       ['Ball Screw',    'BS efficiency',                        'Mechanical efficiency (0–1)',                        0.95,              0.95],
-      ['Ball Screw',    'BS nut mass (kg)',                     'Mass of ball screw nut',                            0.052,             0.052],
       ['Ball Screw',    'BS preload torque (Nm)',               'Nut preload torque',                                0,                 0],
       ['Ball Screw',    'No. of fixed side support blocks',               'Fixed-end bearing support blocks',                      1,                 1],
       ['Ball Screw',    'Fixed side drag torque per block axial (Nm)',   'Axial drag torque per fixed-end block (from catalog)',   0,                 0],
-      ['Ball Screw',    'Fixed side drag torque per block radial (Nm)',  'Radial drag torque per fixed-end block (from catalog)',  0,                 0],
       ['Ball Screw',    'No. of support side support blocks',            'Floating-end bearing support blocks',                   1,                 1],
       ['Ball Screw',    'Support side drag torque per block axial (Nm)', 'Axial drag torque per floating-end block (from catalog)',0,               0],
-      ['Ball Screw',    'Support side drag torque per block radial (Nm)','Radial drag torque per floating-end block (from catalog)',0,             0],
       ['Ball Screw',    'BS max speed (rpm)',                   'Maximum permitted screw speed',                     12000,             12000],
       ['Ball Screw',    'BS max torque (Nm)',                   'Maximum permitted input torque',                    3,                 3],
       ['Ball Screw',    'BS repetition accuracy (μm)',          'Repetition / positioning accuracy',                 10,                10],

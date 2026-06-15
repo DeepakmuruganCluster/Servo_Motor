@@ -9,6 +9,32 @@
   <link rel="stylesheet" href="servo-app.css" />
   <script src="auth.js"></script>
   <style>
+    /* Symbol badge — inline after field label text */
+    .sym {
+      display: inline-block;
+      font-size: 9px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: #6b9fe4;
+      background: #eff6ff;
+      border: 1px solid #dbeafe;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-weight: 500;
+      line-height: 1.4;
+      vertical-align: middle;
+      margin-left: 5px;
+      white-space: nowrap;
+      opacity: 0.85;
+    }
+    /* Block wrapper so text + badge flow inline, input sits below */
+    .field-label-row {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text, #111827);
+    }
+  </style>
+  <style>
     @media print {
       header, .nav-links, #add-step-button, #download-template-button,
       #excel-file-input, #print-report-btn, .remove-step,
@@ -168,12 +194,31 @@
       }
     }
 
-    /* Step cards: horizontal layout inside the card */
+    /* Step cards */
+    .step-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin-top: 12px;
+      background: var(--surface);
+    }
+    .step-card .field-row label {
+      gap: 5px;
+      font-size: 12px;
+    }
+    .step-card .field-row input,
+    .step-card .field-row select {
+      padding: 8px 10px;
+      font-size: 13px;
+      border-radius: 10px;
+    }
     .step-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 4px;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
     }
     .step-header strong {
       font-size: 13px;
@@ -215,12 +260,33 @@
            What does this motor need to DO?
       ════════════════════════════════════════════ -->
       <section class="card">
-        <h2>Motion Steps</h2>
-        <p style="font-size:13px;color:var(--muted);margin:-10px 0 18px">
-          Define each axis motion segment as a discrete positioning event, and include every segment executed within one machine cycle.
-        </p>
-
         <div class="section-block">
+          <h2>Application Inputs</h2>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px;padding:14px;background:#f8fafc;border:1px solid var(--border);border-radius:12px;">
+            <div class="field-row">
+              <label data-tip="Station or operation number for this axis (e.g. OP10).">
+                <span class="field-label-row">Station number</span>
+                <input data-key="project_stn" type="text" style="padding:9px 12px;font-size:13px;" />
+              </label>
+            </div>
+            <div class="field-row">
+              <label data-tip="Application or process name for this axis.">
+                <span class="field-label-row">Application name</span>
+                <input data-key="project_appl" type="text" style="padding:9px 12px;font-size:13px;" />
+              </label>
+            </div>
+            <div class="field-row">
+              <label data-tip="Axis tilt from horizontal. 0° = horizontal, 90° = vertical. Applies to all steps. Range: 0–90°.">
+                <span class="field-label-row">Payload Inclination angle (°) <span class="sym">θ_p</span></span>
+                <input data-key="tilt_deg" type="number" step="1" min="0" max="90" style="padding:9px 12px;font-size:13px;" />
+              </label>
+            </div>
+          </div>
+
+          <h2 style="margin:0 0 6px">Motion Steps</h2>
+          <p style="font-size:13px;color:var(--muted);margin:0 0 16px">
+            Define each axis motion segment as a discrete positioning event, and include every segment executed within one machine cycle.
+          </p>
           <div class="button-row">
             <button id="add-step-button" type="button" class="button secondary">+ Add motion step</button>
           </div>
@@ -239,7 +305,7 @@
               <button id="download-template-button" type="button" class="button secondary">Download template</button>
             </div>
             <div id="excel-status" class="footer-note">
-              Download the template, fill in both sheets (Parameters + Motion Steps), then upload.
+              Download the motion steps template, fill in the steps, then upload.
             </div>
             <div id="excel-trace" class="footer-note" style="margin-top:6px;color:#475569;"></div>
           </div>
@@ -256,13 +322,21 @@
           The physical hardware connecting this motor to the load.
         </p>
 
-        <!-- LM Guide / Parallel Kit / Gearbox / Counterbalance presence -->
-        <div class="mech-availability" style="grid-template-columns:1fr 1fr 1fr 1fr;">
+        <!-- Ballscrew Slide Type / LM Guide / Parallel Kit / Gearbox / Counterbalance presence -->
+        <div class="mech-availability" style="grid-template-columns:1fr 1fr 1fr 1fr 1fr;">
           <div class="field-row">
-            <label data-tip="Whether a linear motion guide rail is present on this axis">LM Guide
+            <label data-tip="Ballscrew slide assembly type">Ballscrew Slide Type
+              <select data-key="bs_type" style="padding:9px 12px;font-size:13px;">
+                <option value="custom">Custom Built</option>
+                <option value="preassembled">Preassembled</option>
+              </select>
+            </label>
+          </div>
+          <div class="field-row" id="lm-guide-row">
+            <label data-tip="Type of linear guide rail on this axis">Guide for Ballscrew
               <select data-key="has_lm_guide" style="padding:9px 12px;font-size:13px;">
-                <option value="1">Yes</option>
-                <option value="0">No</option>
+                <option value="1">LM guide</option>
+                <option value="2">Guide shaft with linear bushing</option>
               </select>
             </label>
           </div>
@@ -285,9 +359,9 @@
           <div class="field-row">
             <label data-tip="Counterweight mechanism to offset gravitational load on the motor">Counterbalance
               <select data-key="has_counterbalance" style="padding:9px 12px;font-size:13px;">
-                <option value="0">None</option>
-                <option value="guide_shaft">Pulley + Guide Shaft</option>
-                <option value="pulley">With Pulley</option>
+                <option value="0">No</option>
+                <option value="pulley">With pulley</option>
+                <option value="guide_shaft">With pulley + Guide shaft</option>
               </select>
             </label>
           </div>
@@ -337,12 +411,12 @@
                     </label>
                   </div>
                   <div class="field-row">
-                    <label data-tip="Mass of the fixture that holds the payload">Fixture mass (kg)
+                    <label data-tip="Mass of the fixture that holds the payload"><span class="field-label-row">Fixture mass (kg) <span class="sym">m_fix</span></span>
                       <input data-key="guide_mass" type="number" step="0.1" />
                     </label>
                   </div>
                   <div class="field-row">
-                    <label data-tip="Mass of the ball screw nut assembly (kg). Contributes to the total moving mass reflected to the motor.">BS nut mass (kg)
+                    <label data-tip="Mass of the ball screw nut and housing assembly (kg). Contributes to the total moving mass reflected to the motor."><span class="field-label-row">Ballscrew nut &amp; housing mass (kg) <span class="sym">m_bsn</span></span>
                       <input data-key="bs_nut_mass" type="number" step="0.001" />
                     </label>
                   </div>
@@ -472,7 +546,7 @@
                 <h4>LM Guide Inputs</h4>
                 <div class="field-grid">
                   <div class="field-row">
-                    <label data-tip="Number of LM guide carriage blocks on the axis.">No. of carriage blocks
+                    <label data-tip="Number of LM guide carriage blocks on the axis."><span class="field-label-row">No. of carriage blocks <span class="sym">n_gcb</span></span>
                       <input data-key="guide_n_blocks" type="number" step="1" min="1" />
                     </label>
                   </div>
@@ -482,24 +556,20 @@
                     </label>
                   </div>
                   <div class="field-row">
-                    <label data-tip="Mass per carriage block (kg).">Mass per carriage block (kg)
+                    <label data-tip="Mass per carriage block (kg)."><span class="field-label-row">Mass per carriage block (kg) <span class="sym">m_gcb</span></span>
                       <input data-key="guide_block_mass" type="number" step="0.01" />
                     </label>
                   </div>
                   <div class="field-row">
-                    <label data-tip="Friction coefficient of LM guide.">Friction coeff LM guide (μ)
+                    <label data-tip="Friction coefficient between the payload and its LM guide (dimensionless)."><span class="field-label-row">Payload guide friction coeff <span class="sym">μ_pg</span></span>
                       <input data-key="mu" type="number" step="0.001" />
                     </label>
                   </div>
-                  <div class="field-row">
-                    <label data-tip="Frictional force at the LM guide (N).">LM guide friction force (N)
-                      <input data-key="guide_max_force" type="number" step="1" />
-                    </label>
+                  <div style="display:none">
+                    <input data-key="guide_max_force" type="number" />
                   </div>
-                  <div class="field-row">
-                    <label data-tip="Rated travel life of the LM guide at 100% of its dynamic load rating (km). Used to estimate actual service life under partial load.">Service life @100% load (km)
-                      <input data-key="guide_service_life" type="number" step="1" />
-                    </label>
+                  <div style="display:none">
+                    <input data-key="guide_service_life" type="number" />
                   </div>
                 </div>
               </div>
@@ -508,18 +578,19 @@
                 <h4>Counterbalance</h4>
                 <div class="field-grid">
                   <div class="field-row">
-                    <label data-tip="Mass of the counterbalance weight (kg). Ideally sized to equal the payload + carriage mass to minimise motor gravity torque.">CB mass (kg)
+                    <label data-tip="Mass of the counterbalance weight (kg). Ideally sized to equal the payload + fixture mass (m_pay_1 + m_fix) to minimise motor gravity torque."><span class="field-label-row">Counter balance Mass (kg) <span class="sym">m_cb</span></span>
                       <input data-key="cb_mass" type="number" step="0.1" />
                     </label>
+                    <p id="cb-mass-warning" style="display:none;margin:4px 0 0;font-size:11px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:4px 8px;"></p>
                   </div>
                   <div class="field-row">
-                    <label data-tip="Angle of the counterbalance guide from horizontal (°). 0° = horizontal, 90° = fully vertical. Affects the gravity component acting on the counterweight.">CB inclination (°)
-                      <input data-key="cb_angle_deg" type="number" step="1" />
+                    <label data-tip="Angle of the counterbalance guide from horizontal (°). Range: 45–90°. For pulley-only, fixed at 90°."><span class="field-label-row">Counterbalance inclination angle (°) <span class="sym">θ_cb</span></span>
+                      <input data-key="cb_angle_deg" type="number" step="1" min="45" max="90" />
                     </label>
                   </div>
                   <div id="cb-guide-fields" style="display:contents;">
                     <div class="field-row">
-                      <label data-tip="Coefficient of friction between the counterbalance mass and its guide rod or rail (dimensionless). Typical value 0.01–0.05 for a linear bushing.">CB friction coeff (μ)
+                      <label data-tip="Coefficient of friction between the counterbalance mass and its guide shaft (dimensionless). Applicable only when pulley + guide shaft is selected. Typical value 0.01–0.05."><span class="field-label-row">Counterbalance guide friction coeff <span class="sym">μ_cbg</span></span>
                         <input data-key="cb_mu" type="number" step="0.001" />
                       </label>
                     </div>

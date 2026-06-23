@@ -1,16 +1,23 @@
 /**
- * TITAN Servo Sizing — Project Store
+ * Servo Sizing — Project Store
  * Manages multiple projects, each containing individual servo axes.
  */
 (function (global) {
   'use strict';
 
-  const STORE_KEY = 'titanProjectStore';
-  const CONTEXT_KEY = 'titanServoContext';
+  const STORE_KEY = 'projectStore';
+  const LEGACY_STORE_KEY = 'titanProjectStore';
+  const CONTEXT_KEY = 'servoContext';
+  const LEGACY_CONTEXT_KEY = 'titanServoContext';
 
   function getStore() {
     try {
-      const raw = localStorage.getItem(STORE_KEY);
+      const raw = localStorage.getItem(STORE_KEY) || localStorage.getItem(LEGACY_STORE_KEY);
+      if (raw && !localStorage.getItem(STORE_KEY)) {
+        // migrate legacy key on first read
+        localStorage.setItem(STORE_KEY, raw);
+        localStorage.removeItem(LEGACY_STORE_KEY);
+      }
       return raw ? JSON.parse(raw) : { projects: {} };
     } catch {
       return { projects: {} };
@@ -19,6 +26,7 @@
 
   function saveStore(store) {
     localStorage.setItem(STORE_KEY, JSON.stringify(store));
+    localStorage.removeItem(LEGACY_STORE_KEY); // clean up legacy key
   }
 
   function now() {
@@ -137,7 +145,7 @@
 
     /**
      * Launch a servo in the calculator.
-     * Copies servo state into titanServoState and navigates to the calculator.
+     * Copies servo state into servoState and navigates to the calculator.
      */
     launchServo(projectId, servoId) {
       const proj = this.get(projectId);
@@ -146,12 +154,12 @@
       if (!servo) return;
 
       if (servo.state) {
-        localStorage.setItem('titanServoState', JSON.stringify(servo.state));
+        localStorage.setItem('servoState', JSON.stringify(servo.state));
       } else {
-        localStorage.removeItem('titanServoState');
+        localStorage.removeItem('servoState');
       }
       localStorage.setItem(
-        'titanServoSelectedMotor',
+        'servoSelectedMotor',
         servo.motorIdx != null && servo.motorIdx >= 0 ? String(servo.motorIdx) : '-1'
       );
 
@@ -165,13 +173,13 @@
         })
       );
 
-      window.location.href = 'titan-project-calculator.html?ctx=1';
+      window.location.href = 'calculator.html?ctx=1';
     },
 
     /** Read the current edit context (set by launchServo). */
     getContext() {
       try {
-        return JSON.parse(localStorage.getItem(CONTEXT_KEY) || 'null');
+        return JSON.parse(localStorage.getItem(CONTEXT_KEY) || localStorage.getItem(LEGACY_CONTEXT_KEY) || 'null');
       } catch {
         return null;
       }
@@ -180,6 +188,7 @@
     /** Clear the edit context after returning from the calculator. */
     clearContext() {
       localStorage.removeItem(CONTEXT_KEY);
+      localStorage.removeItem(LEGACY_CONTEXT_KEY); // clean up legacy key
     },
   };
 

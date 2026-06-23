@@ -3,17 +3,17 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>System Configurator — TITAN</title>
+<title>System Configurator</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --titan:#1F3864;--blue:#1d4ed8;--blue-lt:#dbeafe;
+  --primary:#1F3864;--blue:#1d4ed8;--blue-lt:#dbeafe;
   --bg:#f3f4f6;--surface:#fff;--border:#e5e7eb;
   --text:#111827;--sub:#6b7280;
   --radius:14px;--shadow:0 4px 24px rgba(15,23,42,.08);
 }
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column}
-header{background:var(--titan);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:60px;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+header{background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:60px;box-shadow:0 2px 8px rgba(0,0,0,.3)}
 .brand{display:flex;align-items:center;gap:14px}
 header h1{font-size:20px;font-weight:800;letter-spacing:2px}
 header .sub{font-size:12px;opacity:.55;margin-left:4px;font-weight:400}
@@ -21,7 +21,7 @@ header .sub{font-size:12px;opacity:.55;margin-left:4px;font-weight:400}
 .header-link:hover{background:rgba(255,255,255,.18)}
 main{flex:1;max-width:1160px;margin:0 auto;padding:36px 24px;width:100%}
 .page-intro{margin-bottom:26px}
-.page-intro h2{font-size:20px;font-weight:700;color:var(--titan);margin-bottom:4px}
+.page-intro h2{font-size:20px;font-weight:700;color:var(--primary);margin-bottom:4px}
 .page-intro p{font-size:13px;color:var(--sub);line-height:1.5}
 
 /* Layout */
@@ -64,7 +64,7 @@ main{flex:1;max-width:1160px;margin:0 auto;padding:36px 24px;width:100%}
   <div class="brand">
     <img src="clustervise-logo-white.svg" alt="ClusterVise" style="height:38px;" onerror="this.style.display='none'"/>
     <div>
-      <h1>TITAN<span class="sub">Servo Sizing</span></h1>
+      <h1>Servo Sizing</h1>
     </div>
   </div>
   <a class="header-link" href="index.html">← Projects</a>

@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>TITAN Servo Sizing — Login</title>
+  <title>Servo Sizing — Login</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --titan: #0f172a;
+      --primary: #0f172a;
       --blue: #1d4ed8;
       --blue-dk: #1e40af;
       --bg: #f1f5f9;
@@ -43,7 +43,7 @@
     .brand-icon {
       width: 52px;
       height: 52px;
-      background: var(--titan);
+      background: var(--primary);
       border-radius: 14px;
       display: flex;
       align-items: center;
@@ -54,7 +54,7 @@
       font-size: 22px;
       font-weight: 800;
       letter-spacing: 2px;
-      color: var(--titan);
+      color: var(--primary);
     }
     .brand-text p {
       font-size: 13px;
@@ -75,7 +75,7 @@
     .card h2 {
       font-size: 20px;
       font-weight: 700;
-      color: var(--titan);
+      color: var(--primary);
       margin-bottom: 6px;
     }
     .card .sub {
@@ -185,7 +185,7 @@
       const password = document.getElementById('inp-password').value;
       const ok = USERS.some(u => u.email === email && u.password === password);
       if (ok) {
-        sessionStorage.setItem('titan_auth', '1');
+        sessionStorage.setItem('servo_auth', '1');
         window.location.replace('index.html');
       } else {
         document.getElementById('error-box').classList.add('visible');

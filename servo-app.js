@@ -876,7 +876,7 @@ function renderMotorTable(result) {
   const passMotors = scored.filter(m => m.viable).sort((a, b) => a.score - b.score);
 
   if (passMotors.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:16px;color:var(--muted)">No motor in catalog meets the current requirements.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:16px;color:var(--muted)">No motor in catalog meets the current requirements.</td></tr>`;
     return;
   }
 
@@ -904,6 +904,9 @@ function renderMotorTable(result) {
         <td>${motor.brake ? 'Yes' : 'No'}</td>
         <td style="font-size:11px;line-height:1.6">
           N:${(speedUtil*100).toFixed(0)}% T:${(torqueUtil*100).toFixed(0)}% J:${(inertiaUtil*100).toFixed(0)}%
+        </td>
+        <td style="white-space:nowrap" onclick="event.stopPropagation()">
+          <a href="cad%20files/SIEMENS_AG_${motor.pn.replace(/-/g, '')}.zip" download style="font-size:12px;text-decoration:none">&#8681; CAD</a>
         </td>
       </tr>`;
   }).join('');
@@ -949,6 +952,14 @@ function renderSelectedMotorDetails(result) {
         <tr><td>Torque (Mn)</td><td class="mono">${result.T_peak_motor.toFixed(3)} Nm</td><td class="mono">${motor.Mn.toFixed(2)} Nm</td><td class="mono">${torqueUtil.toFixed(0)}%</td></tr>
         <tr><td>Inertia ratio</td><td class="mono">${inertiaRatio}</td><td class="mono">${state.sm_permitted_inertia_ratio}</td><td class="mono">${result.inertia_ratio !== null ? `${Math.round(inertiaUtil)}%` : '—'}</td></tr>
       </table>
+    </div>
+    <div class="section-block" style="margin-top:10px">
+      <a href="cad%20files/SIEMENS_AG_${motor.pn.replace(/-/g, '')}.zip"
+         download
+         class="btn btn-secondary"
+         style="display:inline-block;text-decoration:none">
+        &#8681; Download CAD Files (Inventor)
+      </a>
     </div>`;
 }
 

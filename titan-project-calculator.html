@@ -232,6 +232,62 @@
       flex-wrap: wrap;
       gap: 10px;
     }
+
+    /* ── Responsive fixes ─────────────────────────────────── */
+
+    /* All inputs/selects fill their grid cell and never overflow */
+    .field-row input,
+    .field-row select {
+      width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+    }
+
+    /* All grid children can shrink below content size */
+    .field-grid > *,
+    .mech-cols > *,
+    .mech-panel > *,
+    .step-card > * {
+      min-width: 0;
+    }
+
+    /* Availability strip: auto-wrap instead of fixed 5 cols */
+    .mech-availability {
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)) !important;
+    }
+
+    /* Panels: 1-column below 1100px */
+    @media (max-width: 1100px) {
+      .mech-panel .field-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Collapse side-by-side mech columns below 900px */
+    @media (max-width: 900px) {
+      .mech-cols {
+        grid-template-columns: 1fr;
+      }
+      .mech-cols > .mech-sub + .mech-sub {
+        border-left: none;
+        border-top: 1px solid var(--border);
+        padding-left: 0;
+        padding-top: 18px;
+      }
+      .mech-availability {
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)) !important;
+      }
+    }
+
+    /* Stack the whole page grid on narrow screens */
+    @media (max-width: 768px) {
+      .page-grid {
+        grid-template-columns: 1fr;
+      }
+      .mech-availability {
+        grid-template-columns: 1fr 1fr !important;
+      }
+    }
   </style>
 </head>
 <body>
@@ -323,7 +379,7 @@
         </p>
 
         <!-- Ballscrew Slide Type / LM Guide / Parallel Kit / Gearbox / Counterbalance presence -->
-        <div class="mech-availability" style="grid-template-columns:1fr 1fr 1fr 1fr 1fr;">
+        <div class="mech-availability">
           <div class="field-row">
             <label data-tip="Ballscrew slide assembly type">Ballscrew Slide Type
               <select data-key="bs_type" style="padding:9px 12px;font-size:13px;">
@@ -750,6 +806,7 @@
                 <th>Jmot (kg·cm²)</th>
                 <th>Brake</th>
                 <th>Utilization (N/T/J)</th>
+                <th>CAD</th>
               </tr>
             </thead>
             <tbody id="motor-table-body"></tbody>
@@ -774,6 +831,7 @@
           </thead>
           <tbody id="verification-body"></tbody>
         </table>
+        <div id="selected-motor-details" style="margin-top:16px;"></div>
       </section>
 
       <!-- ═══════════════════════════════════════

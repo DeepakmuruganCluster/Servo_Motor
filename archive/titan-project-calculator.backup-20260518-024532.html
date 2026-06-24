@@ -6,34 +6,8 @@
   <meta http-equiv="Pragma" content="no-cache" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ClusterVise — Application Calculator</title>
-<link rel="stylesheet" href="servo-app.css" />
+  <link rel="stylesheet" href="servo-app.css" />
   <script src="auth.js"></script>
-  <style>
-    /* Symbol badge — inline after field label text */
-    .sym {
-      display: inline-block;
-      font-size: 9px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      color: #6b9fe4;
-      background: #eff6ff;
-      border: 1px solid #dbeafe;
-      border-radius: 4px;
-      padding: 1px 5px;
-      font-weight: 500;
-      line-height: 1.4;
-      vertical-align: middle;
-      margin-left: 5px;
-      white-space: nowrap;
-      opacity: 0.85;
-    }
-    /* Block wrapper so text + badge flow inline, input sits below */
-    .field-label-row {
-      display: block;
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--text, #111827);
-    }
-  </style>
   <style>
     @media print {
       header, .nav-links, #add-step-button, #download-template-button,
@@ -45,35 +19,6 @@
     }
   </style>
   <style>
-    /* Custom tooltip — shown on label hover via data-tip attribute */
-    [data-tip] {
-      position: relative;
-    }
-    [data-tip]::after {
-      content: attr(data-tip);
-      position: absolute;
-      bottom: calc(100% + 6px);
-      left: 50%;
-      transform: translateX(-50%);
-      background: #1e293b;
-      color: #f1f5f9;
-      font-size: 11.5px;
-      font-weight: 400;
-      line-height: 1.45;
-      padding: 7px 10px;
-      border-radius: 7px;
-      white-space: normal;
-      width: 220px;
-      box-shadow: 0 4px 14px rgba(0,0,0,.18);
-      pointer-events: none;
-      opacity: 0;
-      transition: opacity 0.15s ease;
-      z-index: 9999;
-    }
-    [data-tip]:hover::after {
-      opacity: 1;
-    }
-
     /* Operating conditions — compact horizontal strip */
     .cond-grid {
       display: grid;
@@ -194,31 +139,12 @@
       }
     }
 
-    /* Step cards */
-    .step-card {
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 14px 16px;
-      margin-top: 12px;
-      background: var(--surface);
-    }
-    .step-card .field-row label {
-      gap: 5px;
-      font-size: 12px;
-    }
-    .step-card .field-row input,
-    .step-card .field-row select {
-      padding: 8px 10px;
-      font-size: 13px;
-      border-radius: 10px;
-    }
+    /* Step cards: horizontal layout inside the card */
     .step-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 10px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid var(--border);
+      margin-bottom: 4px;
     }
     .step-header strong {
       font-size: 13px;
@@ -232,62 +158,6 @@
       flex-wrap: wrap;
       gap: 10px;
     }
-
-    /* ── Responsive fixes ─────────────────────────────────── */
-
-    /* All inputs/selects fill their grid cell and never overflow */
-    .field-row input,
-    .field-row select {
-      width: 100%;
-      min-width: 0;
-      box-sizing: border-box;
-    }
-
-    /* All grid children can shrink below content size */
-    .field-grid > *,
-    .mech-cols > *,
-    .mech-panel > *,
-    .step-card > * {
-      min-width: 0;
-    }
-
-    /* Availability strip: auto-wrap instead of fixed 5 cols */
-    .mech-availability {
-      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)) !important;
-    }
-
-    /* Panels: 1-column below 1100px */
-    @media (max-width: 1100px) {
-      .mech-panel .field-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    /* Collapse side-by-side mech columns below 900px */
-    @media (max-width: 900px) {
-      .mech-cols {
-        grid-template-columns: 1fr;
-      }
-      .mech-cols > .mech-sub + .mech-sub {
-        border-left: none;
-        border-top: 1px solid var(--border);
-        padding-left: 0;
-        padding-top: 18px;
-      }
-      .mech-availability {
-        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)) !important;
-      }
-    }
-
-    /* Stack the whole page grid on narrow screens */
-    @media (max-width: 768px) {
-      .page-grid {
-        grid-template-columns: 1fr;
-      }
-      .mech-availability {
-        grid-template-columns: 1fr 1fr !important;
-      }
-    }
   </style>
 </head>
 <body>
@@ -300,7 +170,7 @@
     </div>
     <div class="nav-links">
       <a class="header-link" href="index.html">Projects</a>
-      <button onclick="sessionStorage.removeItem('servo_auth');window.location.replace('login.html');" title="Sign out"
+      <button onclick="sessionStorage.removeItem('titan_auth');window.location.replace('login.html');" title="Sign out"
         style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;padding:8px 14px;border-radius:999px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;">
         <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         Sign out
@@ -316,35 +186,22 @@
            What does this motor need to DO?
       ════════════════════════════════════════════ -->
       <section class="card">
-        <div class="section-block">
-          <h2>Application Inputs</h2>
-          <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px;padding:14px;background:#f8fafc;border:1px solid var(--border);border-radius:12px;">
-            <div class="field-row">
-              <label data-tip="Station or operation number for this axis (e.g. OP10).">
-                <span class="field-label-row">Station number</span>
-                <input data-key="project_stn" type="text" style="padding:9px 12px;font-size:13px;" />
-              </label>
-            </div>
-            <div class="field-row">
-              <label data-tip="Application or process name for this axis.">
-                <span class="field-label-row">Application name</span>
-                <input data-key="project_appl" type="text" style="padding:9px 12px;font-size:13px;" />
-              </label>
-            </div>
-            <div class="field-row">
-              <label data-tip="Axis tilt from horizontal. 0° = horizontal, 90° = vertical. Applies to all steps. Range: 0–90°.">
-                <span class="field-label-row">Payload Inclination angle (°) <span class="sym">θ_p</span></span>
-                <input data-key="tilt_deg" type="number" step="1" min="0" max="90" style="padding:9px 12px;font-size:13px;" />
-              </label>
-            </div>
-          </div>
+        <h2>Motion Steps</h2>
+        <p style="font-size:13px;color:var(--muted);margin:-10px 0 18px">
+          Define each axis motion segment as a discrete positioning event, and include every segment executed within one machine cycle.
+        </p>
 
-          <h2 style="margin:0 0 6px">Motion Steps</h2>
-          <p style="font-size:13px;color:var(--muted);margin:0 0 16px">
-            Define each axis motion segment as a discrete positioning event, and include every segment executed within one machine cycle.
-          </p>
+        <div class="field-grid">
+          <div class="field-row">
+            <label>Dwell time between moves (s)
+              <input data-key="dwell_time" type="number" step="0.01" />
+            </label>
+          </div>
+        </div>
+
+        <div class="section-block">
           <div class="button-row">
-            <button id="add-step-button" type="button" class="button secondary">+ Add motion step</button>
+            <button id="add-step-button" type="button" class="button secondary">+ Add step</button>
           </div>
           <div id="movement-steps-container"></div>
         </div>
@@ -353,7 +210,7 @@
           <h3 style="font-size:13px;font-weight:700;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em">Import from Excel</h3>
           <div class="field-grid">
             <div class="field-row">
-              <label>Upload input file (.xlsx)
+              <label>Upload steps file (.xlsx)
                 <input id="excel-file-input" type="file" accept=".xlsx,.xls" />
               </label>
             </div>
@@ -361,9 +218,8 @@
               <button id="download-template-button" type="button" class="button secondary">Download template</button>
             </div>
             <div id="excel-status" class="footer-note">
-              Download the motion steps template, fill in the steps, then upload.
+              Expects columns: Step, Stroke, Move time, Acceleration time, Deceleration time, External force, Moving mass, Tilt angle.
             </div>
-            <div id="excel-trace" class="footer-note" style="margin-top:6px;color:#475569;"></div>
           </div>
         </div>
       </section>
@@ -378,26 +234,10 @@
           The physical hardware connecting this motor to the load.
         </p>
 
-        <!-- Ballscrew Slide Type / LM Guide / Parallel Kit / Gearbox / Counterbalance presence -->
+        <!-- Parallel Kit / Gearbox presence -->
         <div class="mech-availability">
           <div class="field-row">
-            <label data-tip="Ballscrew slide assembly type">Ballscrew Slide Type
-              <select data-key="bs_type" style="padding:9px 12px;font-size:13px;">
-                <option value="custom">Custom Built</option>
-                <option value="preassembled">Preassembled</option>
-              </select>
-            </label>
-          </div>
-          <div class="field-row" id="lm-guide-row">
-            <label data-tip="Type of linear guide rail on this axis">Guide for Ballscrew
-              <select data-key="has_lm_guide" style="padding:9px 12px;font-size:13px;">
-                <option value="1">LM guide</option>
-                <option value="2">Guide shaft with linear bushing</option>
-              </select>
-            </label>
-          </div>
-          <div class="field-row">
-            <label data-tip="Enables mounting of motor parallel to ballscrew">Parallel Kit
+            <label>Parallel Kit
               <select data-key="has_parallel_kit" style="padding:9px 12px;font-size:13px;">
                 <option value="1">Yes</option>
                 <option value="0">No</option>
@@ -405,19 +245,10 @@
             </label>
           </div>
           <div class="field-row">
-            <label data-tip="Gearbox between motor and ball screw for speed reduction / torque multiplication">Gearbox (GB)
+            <label>Gearbox (GB)
               <select data-key="has_gearbox" style="padding:9px 12px;font-size:13px;">
                 <option value="1">Yes</option>
                 <option value="0">No</option>
-              </select>
-            </label>
-          </div>
-          <div class="field-row">
-            <label data-tip="Counterweight mechanism to offset gravitational load on the motor">Counterbalance
-              <select data-key="has_counterbalance" style="padding:9px 12px;font-size:13px;">
-                <option value="0">No</option>
-                <option value="pulley">With pulley</option>
-                <option value="guide_shaft">With pulley + Guide shaft</option>
               </select>
             </label>
           </div>
@@ -432,103 +263,103 @@
                 <h4>Ball Screw Inputs</h4>
                 <div class="field-grid">
                   <div class="field-row">
-                    <label data-tip="Linear travel of payload per one full revolution of the ball screw (mm/rev).">Lead (mm/rev)
+                    <label>Pitch (mm)
                       <input data-key="bs_pitch" type="number" step="0.1" />
                     </label>
                   </div>
                   <div class="field-row">
-                    <label data-tip="Nominal outer diameter of the ball screw shaft (mm).">Diameter (mm)
+                    <label>Diameter (mm)
                       <input data-key="bs_dia" type="number" step="0.1" />
                     </label>
                   </div>
                   <div class="field-row">
-                    <label data-tip="Total effective length of the ball screw (mm). Must be greater than the maximum stroke of any motion step.">Length (mm)
-                      <input data-key="bs_length" type="number" step="1" min="1" />
-                      <span id="bs-length-warn" style="display:none;font-size:11px;color:#b91c1c;margin-top:3px;">⚠ Must be ≥ max stroke (<span id="bs-max-stroke-val">—</span> mm)</span>
-                    </label>
-                  </div>
-                  <div class="field-row">
-                    <label data-tip="Screw shaft material">Material
-                      <select data-key="bs_material" style="padding:9px 12px;font-size:13px;">
-                        <option value="steel">Mild Steel</option>
-                        <option value="stainless">Stainless Steel</option>
-                        <option value="aluminum">Aluminum</option>
-                      </select>
-                    </label>
-                  </div>
-                  <div class="field-row">
-                    <label data-tip="Mechanical efficiency of the ball screw (0 to 1).">Efficiency (0–1)
+                    <label>Efficiency (0–1)
                       <input data-key="bs_efficiency" type="number" step="0.001" />
                     </label>
                   </div>
                   <div class="field-row">
-                    <label data-tip="Internal friction torque due to ball-nut preload at zero speed (Nm). Obtain from the screw manufacturer's datasheet.">Preload torque T₀ (Nm)
-                      <input data-key="bs_preload_torque" type="number" step="0.001" />
+                    <label>Preload nut friction coeff (μ₀)
+                      <input data-key="bs_preload_mu" type="number" step="0.01" />
                     </label>
                   </div>
                   <div class="field-row">
-                    <label data-tip="Mass of the fixture that holds the payload"><span class="field-label-row">Fixture mass (kg) <span class="sym">m_fix</span></span>
-                      <input data-key="guide_mass" type="number" step="0.1" />
+                    <label>Preload force (N)
+                      <input data-key="bs_preload_force" type="number" step="1" />
                     </label>
                   </div>
                   <div class="field-row">
-                    <label data-tip="Mass of the ball screw nut and housing assembly (kg). Contributes to the total moving mass reflected to the motor."><span class="field-label-row">Ballscrew nut &amp; housing mass (kg) <span class="sym">m_bsn</span></span>
-                      <input data-key="bs_nut_mass" type="number" step="0.001" />
-                    </label>
-                  </div>
-                </div>
-              </div>
-              <div class="mech-panel">
-                <h4>Support Blocks</h4>
-                <div class="field-grid">
-                  <div class="field-row">
-                    <label data-tip="Number of bearing blocks on the fixed (driven) end of the ball screw.">No. of fixed side support blocks
+                    <label>No. of fixed side support blocks
                       <input data-key="bs_n_fixed_blocks" type="number" step="1" min="1" />
                     </label>
                   </div>
                   <div class="field-row">
-                    <label data-tip="Friction drag torque per fixed-end support bearing block (Nm).">Fixed side support block drag torque (Nm)
+                    <label>Fixed side support block drag torque
                       <input data-key="bs_fixed_drag_axial" type="number" step="0.001" />
                     </label>
                   </div>
                   <div class="field-row">
-                    <label data-tip="Number of bearing blocks on the floating (support) end of the ball screw.">No. of support side support blocks
+                    <label>No. of support side support blocks
                       <input data-key="bs_n_support_blocks" type="number" step="1" min="1" />
                     </label>
                   </div>
                   <div class="field-row">
-                    <label data-tip="Friction drag torque per floating-end support bearing block (Nm).">Support side support block drag torque (Nm)
+                    <label>Support side support block drag torque
                       <input data-key="bs_support_drag_axial" type="number" step="0.001" />
                     </label>
                   </div>
-                </div>
-              </div>
-              <div class="mech-panel">
-                <h4>Performance Limits</h4>
-                <div class="field-grid">
                   <div class="field-row">
-                    <label data-tip="Auto-calculated rotational inertia of the ball screw shaft referred to the motor shaft (kg·m²)">Calculated inertia Jrm (kg·m²)
-                      <input id="out_bs_jrm" type="text" readonly style="background:#f3f4f6;color:#6b7280;cursor:default;" />
+                    <label>Inertia (kg·m²)
+                      <input data-key="bs_inertia" type="number" step="0.0000001" />
                     </label>
                   </div>
                   <div class="field-row">
-                    <label data-tip="Maximum allowable rotational speed of the ball screw (rpm).">Max permitted speed (rpm)
+                    <label>Max permitted speed (rpm)
                       <input data-key="bs_max_speed" type="number" step="100" />
                     </label>
                   </div>
                   <div class="field-row">
-                    <label data-tip="Maximum allowable input torque at the ball screw (Nm).">Max permitted torque (Nm)
+                    <label>Max permitted torque (Nm)
                       <input data-key="bs_max_torque" type="number" step="0.1" />
                     </label>
                   </div>
                   <div class="field-row">
-                    <label data-tip="Positional accuracy of the ball screw (±µm).">Ball screw precision (+/- µm)
+                    <label>Repetition accuracy (+/- µm)
                       <input data-key="bs_repetition_accuracy" type="number" step="1" />
                     </label>
                   </div>
                 </div>
               </div>
 
+              <div class="mech-panel" id="gearbox-block">
+                <h4>Gearbox Inputs</h4>
+                <div class="field-grid">
+                  <div class="field-row">
+                    <label>Ratio
+                      <input data-key="gb_ratio" type="number" step="0.1" />
+                    </label>
+                  </div>
+                  <div class="field-row">
+                    <label>Efficiency (0–1)
+                      <input data-key="gb_efficiency" type="number" step="0.01" />
+                    </label>
+                  </div>
+                  <div class="field-row">
+                    <label>No-load torque (Nm)
+                      <input data-key="gb_no_load_torque" type="number" step="0.01" />
+                    </label>
+                  </div>
+                  <div class="field-row">
+                    <label>Inertia (kg·m²)
+                      <input data-key="gb_inertia" type="number" step="0.0000001" />
+                    </label>
+                  </div>
+                  <div class="field-row">
+                    <label>Backlash (arcmin)
+                      <input data-key="gb_backlash" type="number" step="0.1" />
+                    </label>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -540,59 +371,28 @@
                 <h4>Parallel Kit Inputs</h4>
                 <div class="field-grid">
                   <div class="field-row">
-                    <label data-tip="Ratio of input speed to output speed.">Input speed / Output speed
+                    <label>Ratio
                       <input data-key="pk_ratio" type="number" step="0.1" />
                     </label>
                   </div>
                   <div class="field-row">
-                    <label data-tip="Friction torque of the parallel kit at zero load (Nm). Added as a constant drag torque to the motor demand.">No-load torque (Nm)
+                    <label>No-load torque (Nm)
                       <input data-key="pk_no_load_torque" type="number" step="0.01" />
                     </label>
                   </div>
                   <div class="field-row">
-                    <label data-tip="Rotational inertia of the parallel kit pulley and belt assembly referred to the motor shaft (kg·m²). From the manufacturer datasheet.">Inertia (kg·m²)
+                    <label>Inertia (kg·m²)
                       <input data-key="pk_inertia" type="number" step="0.0000001" />
                     </label>
                   </div>
                   <div class="field-row">
-                    <label data-tip="Maximum permissible input torque of the parallel kit (Nm). Motor peak torque must not exceed this limit.">Max torque (Nm)
+                    <label>Max torque (Nm)
                       <input data-key="pk_max_torque" type="number" step="0.1" />
                     </label>
                   </div>
                   <div class="field-row">
-                    <label data-tip="Maximum permissible input speed of the parallel kit (rpm). Motor speed must not exceed this limit.">Max speed (rpm)
+                    <label>Max speed (rpm)
                       <input data-key="pk_max_speed" type="number" step="100" />
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              <div class="mech-panel" id="gearbox-block">
-                <h4>Gearbox Inputs</h4>
-                <div class="field-grid">
-                  <div class="field-row">
-                    <label data-tip="Motor speed / output speed ratio.">Ratio
-                      <input data-key="gb_ratio" type="number" step="0.1" />
-                    </label>
-                  </div>
-                  <div class="field-row">
-                    <label data-tip="Mechanical efficiency of the gearbox (0 to 1).">Efficiency (0–1)
-                      <input data-key="gb_efficiency" type="number" step="0.01" />
-                    </label>
-                  </div>
-                  <div class="field-row">
-                    <label data-tip="Friction drag torque at no load (Nm).">No-load torque (Nm)
-                      <input data-key="gb_no_load_torque" type="number" step="0.01" />
-                    </label>
-                  </div>
-                  <div class="field-row">
-                    <label data-tip="Gearbox inertia referred to motor shaft (kg·m²).">Inertia (kg·m²)
-                      <input data-key="gb_inertia" type="number" step="0.0000001" />
-                    </label>
-                  </div>
-                  <div class="field-row">
-                    <label data-tip="Output angular play with input fixed (arcmin).">Backlash (arcmin)
-                      <input data-key="gb_backlash" type="number" step="0.1" />
                     </label>
                   </div>
                 </div>
@@ -602,64 +402,68 @@
                 <h4>LM Guide Inputs</h4>
                 <div class="field-grid">
                   <div class="field-row">
-                    <label data-tip="Number of LM guide carriage blocks on the axis."><span class="field-label-row">No. of carriage blocks <span class="sym">n_gcb</span></span>
+                    <label>No. of carriage blocks (payload)
                       <input data-key="guide_n_blocks" type="number" step="1" min="1" />
                     </label>
                   </div>
                   <div class="field-row">
-                    <label data-tip="Friction force per carriage block (N).">Friction Force per carriage block (N)
+                    <label>Friction Force per block (N)
                       <input data-key="guide_force" type="number" step="1" />
                     </label>
                   </div>
                   <div class="field-row">
-                    <label data-tip="Mass per carriage block (kg)."><span class="field-label-row">Mass per carriage block (kg) <span class="sym">m_gcb</span></span>
-                      <input data-key="guide_block_mass" type="number" step="0.01" />
+                    <label>Carriage mass (Kg)
+                      <input data-key="guide_mass" type="number" step="0.1" />
                     </label>
                   </div>
                   <div class="field-row">
-                    <label data-tip="Friction coefficient between the payload and its LM guide (dimensionless)."><span class="field-label-row">Payload guide friction coeff <span class="sym">μ_pg</span></span>
-                      <input data-key="mu" type="number" step="0.001" />
+                    <label>Max withstand force (N)
+                      <input data-key="guide_max_force" type="number" step="1" />
                     </label>
                   </div>
-                  <div style="display:none">
-                    <input data-key="guide_max_force" type="number" />
-                  </div>
-                  <div style="display:none">
-                    <input data-key="guide_service_life" type="number" />
+                  <div class="field-row">
+                    <label>Service life @100% load (km)
+                      <input data-key="guide_service_life" type="number" step="1" />
+                    </label>
                   </div>
                 </div>
               </div>
 
-              <div class="mech-panel" id="cb-panel">
+              <div class="mech-panel">
                 <h4>Counterbalance</h4>
                 <div class="field-grid">
                   <div class="field-row">
-                    <label data-tip="Mass of the counterbalance weight (kg). Ideally sized to equal the payload + fixture mass (m_pay_1 + m_fix) to minimise motor gravity torque."><span class="field-label-row">Counter balance Mass (kg) <span class="sym">m_cb</span></span>
-                      <input data-key="cb_mass" type="number" step="0.1" />
+                    <label>Counterbalance present
+                      <select data-key="has_counterbalance" style="padding:9px 12px;font-size:13px;">
+                        <option value="0">No</option>
+                        <option value="1">Yes</option>
+                      </select>
                     </label>
-                    <p id="cb-mass-warning" style="display:none;margin:4px 0 0;font-size:11px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:4px 8px;"></p>
                   </div>
                   <div class="field-row">
-                    <label data-tip="Angle of the counterbalance guide from horizontal (°). Range: 45–90°. For pulley-only, fixed at 90°."><span class="field-label-row">Counterbalance inclination angle (°) <span class="sym">θ_cb</span></span>
-                      <input data-key="cb_angle_deg" type="number" step="1" min="45" max="90" />
+                    <label>CB mass (kg)
+                      <input data-key="cb_mass" type="number" step="0.1" />
                     </label>
                   </div>
-                  <div id="cb-guide-fields" style="display:contents;">
-                    <div class="field-row">
-                      <label data-tip="Coefficient of friction between the counterbalance mass and its guide shaft (dimensionless). Applicable only when pulley + guide shaft is selected. Typical value 0.01–0.05."><span class="field-label-row">Counterbalance guide friction coeff <span class="sym">μ_cbg</span></span>
-                        <input data-key="cb_mu" type="number" step="0.001" />
-                      </label>
-                    </div>
-                    <div class="field-row">
-                      <label data-tip="Friction force of a single linear bushing on the counterbalance guide rod (N). From the bushing manufacturer datasheet.">Linear bush friction force (counterbalance) (N)
-                        <input data-key="cb_bushing_friction_force" type="number" step="0.1" />
-                      </label>
-                    </div>
-                    <div class="field-row">
-                      <label data-tip="Number of linear bushings guiding the counterbalance mass on the rod. Total bushing friction = friction per bushing × this number.">number of linear bushings (counterbalance)
-                        <input data-key="cb_n_bushings" type="number" step="1" min="0" />
-                      </label>
-                    </div>
+                  <div class="field-row">
+                    <label>CB inclination (°)
+                      <input data-key="cb_angle_deg" type="number" step="1" />
+                    </label>
+                  </div>
+                  <div class="field-row">
+                    <label>CB friction coeff (μ)
+                      <input data-key="cb_mu" type="number" step="0.001" />
+                    </label>
+                  </div>
+                  <div class="field-row">
+                    <label>Linear bush friction force (counterbalance)
+                      <input data-key="cb_bushing_friction_force" type="number" step="0.1" />
+                    </label>
+                  </div>
+                  <div class="field-row">
+                    <label>number of linear bushings (counterbalance)
+                      <input data-key="cb_n_bushings" type="number" step="1" min="0" />
+                    </label>
                   </div>
                 </div>
               </div>
@@ -668,7 +472,7 @@
                 <h4>General Inputs</h4>
                 <div class="field-grid">
                   <div class="field-row">
-                    <label data-tip="Additional torque margin applied on top of calculated peak torque (%). E.g. 20% means the selected motor must have at least 1.2× the calculated peak torque.">Safety factor (%)
+                    <label>Safety factor (%)
                       <input data-key="safety_factor" type="number" step="1" />
                     </label>
                   </div>
@@ -704,37 +508,37 @@
         </p>
         <div class="cond-grid">
           <div class="field-row">
-            <label data-tip="Total duration of one complete machine cycle, including all axes and idle time (s). Used to calculate the duty cycle of this axis.">Machine cycle time (s)
+            <label>Machine cycle time (s)
               <input data-key="project_total_cycle" type="number" step="0.1" />
             </label>
           </div>
           <div class="field-row">
-            <label data-tip="Time this axis is actively moving or loaded within one machine cycle (s). Determines the RMS torque duty cycle.">Axis on-time per cycle (s)
+            <label>Axis on-time per cycle (s)
               <input data-key="project_operating_time" type="number" step="0.1" />
             </label>
           </div>
           <div class="field-row">
-            <label data-tip="Number of production shifts run per day. Used to calculate total annual operating hours for service life estimation.">Shifts per day
+            <label>Shifts per day
               <input data-key="project_shifts" type="number" step="1" />
             </label>
           </div>
           <div class="field-row">
-            <label data-tip="Duration of each production shift (hours). Combined with shifts per day and days per week to calculate annual operating hours.">Hours per shift
+            <label>Hours per shift
               <input data-key="project_hours_shift" type="number" step="0.5" />
             </label>
           </div>
           <div class="field-row">
-            <label data-tip="Number of working days per week the machine operates. Multiplied by weeks per year to estimate total annual running time.">Days per week
+            <label>Days per week
               <input data-key="project_days_week" type="number" step="1" />
             </label>
           </div>
           <div class="field-row">
-            <label data-tip="Required operational lifetime of the machine in years. Used to verify that ball screw and LM guide service life targets are met.">Service life (yrs)
+            <label>Service life (yrs)
               <input data-key="project_service_life" type="number" step="1" />
             </label>
           </div>
           <div class="field-row">
-            <label data-tip="Target positional accuracy of the axis (µm). Compared against the ball screw repetition accuracy to validate the selected component.">Accuracy required (µm)
+            <label>Accuracy required (µm)
               <input data-key="project_accuracy" type="number" step="1" />
             </label>
           </div>
@@ -755,13 +559,8 @@
             <div class="metric-card"><span>Linear Speed of the ball screw shaft</span><strong id="out_vmax">—</strong></div>
           </div>
           <div class="metric-grid" style="margin-top:10px;">
-            <div class="metric-card" style="background:#eff6ff;border:1px solid #bfdbfe;"><span>Total Torque during Acceleration (Tl + Ta)</span><strong id="out_t_total_accel">—</strong></div>
-            <div class="metric-card" style="background:#f0fdf4;border:1px solid #bbf7d0;"><span>Total Torque during Top Speed (Tl)</span><strong id="out_t_total_topspeed">—</strong></div>
-            <div class="metric-card" style="background:#fff7ed;border:1px solid #fed7aa;"><span>Total Torque during Deceleration (Tl − Td)</span><strong id="out_t_total_decel">—</strong></div>
-          </div>
-          <div class="metric-grid" style="margin-top:8px;">
-            <div class="metric-card" style="background:var(--bg-subtle,#f8fafc);"><span>Acceleration Torque (Ta)</span><strong id="out_t_accel">—</strong></div>
-            <div class="metric-card" style="background:var(--bg-subtle,#f8fafc);"><span>Deceleration Torque (Td)</span><strong id="out_t_decel">—</strong></div>
+            <div class="metric-card" style="background:var(--bg-subtle,#f8fafc);"><span>Acceleration Torque</span><strong id="out_t_accel">—</strong></div>
+            <div class="metric-card" style="background:var(--bg-subtle,#f8fafc);"><span>Deceleration Torque</span><strong id="out_t_decel">—</strong></div>
             <div class="metric-card" style="background:var(--bg-subtle,#f8fafc);"><span>T — Axial Force</span><strong id="out_t_axial">—</strong></div>
             <div class="metric-card" style="background:var(--bg-subtle,#f8fafc);"><span>T — Preload</span><strong id="out_t_preload">—</strong></div>
             <div class="metric-card" style="background:var(--bg-subtle,#f8fafc);"><span>T — Bearing Drag (Fixed + Support)</span><strong id="out_t_bearing_drag">—</strong></div>
@@ -806,7 +605,6 @@
                 <th>Jmot (kg·cm²)</th>
                 <th>Brake</th>
                 <th>Utilization (N/T/J)</th>
-                <th>CAD</th>
               </tr>
             </thead>
             <tbody id="motor-table-body"></tbody>
@@ -831,7 +629,6 @@
           </thead>
           <tbody id="verification-body"></tbody>
         </table>
-        <div id="selected-motor-details" style="margin-top:16px;"></div>
       </section>
 
       <!-- ═══════════════════════════════════════
@@ -906,8 +703,6 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="projects.js"></script>
-  <script src="constants.js"></script>
-  <script src="calculations.js"></script>
-  <script src="servo-app.js"></script>
+  <script src="servo-app.js?v=3"></script>
 </body>
 </html>

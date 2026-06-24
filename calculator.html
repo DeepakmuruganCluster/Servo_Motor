@@ -6,8 +6,8 @@
   <meta http-equiv="Pragma" content="no-cache" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ClusterVise — Application Calculator</title>
-<link rel="stylesheet" href="servo-app.css" />
-  <script src="auth.js"></script>
+<link rel="stylesheet" href="css/servo-app.css" />
+  <script src="js/auth.js"></script>
   <style>
     /* Symbol badge — inline after field label text */
     .sym {
@@ -217,13 +217,75 @@
       align-items: center;
       justify-content: space-between;
       margin-bottom: 10px;
-      padding-bottom: 8px;
+      padding-bottom: 10px;
       border-bottom: 1px solid var(--border);
     }
-    .step-header strong {
-      font-size: 13px;
+    .step-header-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex: 1;
+      min-width: 0;
+    }
+    .step-badge {
+      background: var(--primary, #1F3864);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      border-radius: 50%;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .step-name-input {
+      border: none;
+      background: transparent;
+      font-size: 15px;
       font-weight: 700;
       color: var(--text);
+      padding: 2px 4px;
+      outline: none;
+      width: 100%;
+      min-width: 0;
+      border-radius: 6px;
+    }
+    .step-name-input:hover { background: #f1f5f9; }
+    .step-name-input:focus { background: #f8fafc; border: 1px solid var(--border); padding: 2px 6px; }
+
+    /* Operating conditions — grouped layout */
+    .oc-groups {
+      display: grid;
+      grid-template-columns: 1fr 2fr 1fr;
+      gap: 0;
+    }
+    .oc-group {
+      padding: 0 20px;
+      border-right: 1px solid var(--border);
+    }
+    .oc-group:first-child { padding-left: 0; }
+    .oc-group:last-child { border-right: none; }
+    .oc-group-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+    .oc-fields {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 10px;
+    }
+    .oc-fields .field-row label { font-size: 12px; }
+    .oc-fields .field-row input { padding: 9px 12px; font-size: 13px; }
+    @media (max-width: 900px) {
+      .oc-groups { grid-template-columns: 1fr; }
+      .oc-group { padding: 16px 0; border-right: none; border-bottom: 1px solid var(--border); }
+      .oc-group:last-child { border-bottom: none; }
     }
 
     /* Summary strip */
@@ -288,12 +350,141 @@
         grid-template-columns: 1fr 1fr !important;
       }
     }
+
+    /* ── Primary Results redesign ─────────────────────────────── */
+    .pr-hero {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+    .pr-hero-card {
+      background: var(--primary, #1F3864);
+      border-radius: 16px;
+      padding: 20px 24px;
+    }
+    .pr-hero-card span {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: rgba(255,255,255,0.65);
+      margin-bottom: 8px;
+    }
+    .pr-hero-card strong {
+      display: block;
+      font-size: 32px;
+      font-weight: 700;
+      line-height: 1;
+      color: #fff;
+    }
+    .pr-section-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin: 0 0 10px;
+    }
+    .pr-phases {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+    .pr-phase {
+      border-radius: 14px;
+      padding: 16px 18px;
+      border: 1px solid;
+    }
+    .pr-phase-name {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+    }
+    .pr-phase-formula {
+      font-size: 12px;
+      margin-bottom: 10px;
+      opacity: 0.65;
+    }
+    .pr-phase strong {
+      display: block;
+      font-size: 22px;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .pr-phase--accel { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
+    .pr-phase--cruise { background: #f0fdf4; border-color: #bbf7d0; color: #15803d; }
+    .pr-phase--decel { background: #fff7ed; border-color: #fed7aa; color: #c2410c; }
+    .pr-breakdown {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 24px;
+    }
+    .pr-chip {
+      flex: 1;
+      min-width: 100px;
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 14px;
+    }
+    .pr-chip span {
+      display: block;
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .pr-chip strong {
+      display: block;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .pr-screw {
+      display: flex;
+      gap: 0;
+      flex-wrap: wrap;
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .pr-screw-item {
+      flex: 1;
+      min-width: 120px;
+      padding: 14px 20px;
+      border-right: 1px solid var(--border);
+    }
+    .pr-screw-item:last-child { border-right: none; }
+    .pr-screw-item span {
+      display: block;
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .pr-screw-item strong {
+      display: block;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    @media (max-width: 720px) {
+      .pr-hero { grid-template-columns: 1fr; }
+      .pr-phases { grid-template-columns: 1fr; }
+      .pr-screw-item { border-right: none; border-bottom: 1px solid var(--border); }
+      .pr-screw-item:last-child { border-bottom: none; }
+    }
   </style>
 </head>
 <body>
   <header>
     <div class="brand">
-      <img src="clustervise-logo-white.svg" alt="ClusterVise" style="height:36px;" />
+      <img src="assets/clustervise-logo-white.svg" alt="ClusterVise" style="height:36px;" />
       <div>
         <p style="color:#cbd5e1;font-size:13px;margin:0;">Servo Sizing — Application Calculator</p>
       </div>
@@ -702,41 +893,59 @@
         <p style="font-size:13px;color:var(--muted);margin:-10px 0 16px">
           Used to calculate RMS torque (duty cycle) and verify service life.
         </p>
-        <div class="cond-grid">
-          <div class="field-row">
-            <label data-tip="Total duration of one complete machine cycle, including all axes and idle time (s). Used to calculate the duty cycle of this axis.">Machine cycle time (s)
-              <input data-key="project_total_cycle" type="number" step="0.1" />
-            </label>
+        <div class="oc-groups">
+          <!-- Group 1: Duty Cycle -->
+          <div class="oc-group">
+            <div class="oc-group-label">Duty Cycle</div>
+            <div class="oc-fields">
+              <div class="field-row">
+                <label data-tip="Total duration of one complete machine cycle, including all axes and idle time (s). Used to calculate the duty cycle of this axis.">Machine cycle time (s)
+                  <input data-key="project_total_cycle" type="number" step="0.1" />
+                </label>
+              </div>
+              <div class="field-row">
+                <label data-tip="Time this axis is actively moving or loaded within one machine cycle (s). Determines the RMS torque duty cycle.">Axis on-time per cycle (s)
+                  <input data-key="project_operating_time" type="number" step="0.1" />
+                </label>
+              </div>
+            </div>
           </div>
-          <div class="field-row">
-            <label data-tip="Time this axis is actively moving or loaded within one machine cycle (s). Determines the RMS torque duty cycle.">Axis on-time per cycle (s)
-              <input data-key="project_operating_time" type="number" step="0.1" />
-            </label>
+          <!-- Group 2: Production Schedule -->
+          <div class="oc-group">
+            <div class="oc-group-label">Production Schedule</div>
+            <div class="oc-fields">
+              <div class="field-row">
+                <label data-tip="Number of production shifts run per day. Used to calculate total annual operating hours for service life estimation.">Shifts per day
+                  <input data-key="project_shifts" type="number" step="1" />
+                </label>
+              </div>
+              <div class="field-row">
+                <label data-tip="Duration of each production shift (hours). Combined with shifts per day and days per week to calculate annual operating hours.">Hours per shift
+                  <input data-key="project_hours_shift" type="number" step="0.5" />
+                </label>
+              </div>
+              <div class="field-row">
+                <label data-tip="Number of working days per week the machine operates. Multiplied by weeks per year to estimate total annual running time.">Days per week
+                  <input data-key="project_days_week" type="number" step="1" />
+                </label>
+              </div>
+              <div class="field-row">
+                <label data-tip="Required operational lifetime of the machine in years. Used to verify that ball screw and LM guide service life targets are met.">Service life (yrs)
+                  <input data-key="project_service_life" type="number" step="1" />
+                </label>
+              </div>
+            </div>
           </div>
-          <div class="field-row">
-            <label data-tip="Number of production shifts run per day. Used to calculate total annual operating hours for service life estimation.">Shifts per day
-              <input data-key="project_shifts" type="number" step="1" />
-            </label>
-          </div>
-          <div class="field-row">
-            <label data-tip="Duration of each production shift (hours). Combined with shifts per day and days per week to calculate annual operating hours.">Hours per shift
-              <input data-key="project_hours_shift" type="number" step="0.5" />
-            </label>
-          </div>
-          <div class="field-row">
-            <label data-tip="Number of working days per week the machine operates. Multiplied by weeks per year to estimate total annual running time.">Days per week
-              <input data-key="project_days_week" type="number" step="1" />
-            </label>
-          </div>
-          <div class="field-row">
-            <label data-tip="Required operational lifetime of the machine in years. Used to verify that ball screw and LM guide service life targets are met.">Service life (yrs)
-              <input data-key="project_service_life" type="number" step="1" />
-            </label>
-          </div>
-          <div class="field-row">
-            <label data-tip="Target positional accuracy of the axis (µm). Compared against the ball screw repetition accuracy to validate the selected component.">Accuracy required (µm)
-              <input data-key="project_accuracy" type="number" step="1" />
-            </label>
+          <!-- Group 3: Quality -->
+          <div class="oc-group">
+            <div class="oc-group-label">Quality</div>
+            <div class="oc-fields">
+              <div class="field-row">
+                <label data-tip="Target positional accuracy of the axis (µm). Compared against the ball screw repetition accuracy to validate the selected component.">Accuracy required (µm)
+                  <input data-key="project_accuracy" type="number" step="1" />
+                </label>
+              </div>
+            </div>
           </div>
         </div>
         <div id="project-summary" class="summary-panel" style="margin-top:16px;"></div>
@@ -747,32 +956,55 @@
       ════════════════════════════════════════════ -->
       <section class="card" style="grid-column: 1 / -1;">
         <h2>Primary Results</h2>
-        <div class="section-block">
-          <h3>At Ball screw shaft</h3>
-          <div class="metric-grid">
-            <div class="metric-card"><span>Torque Required at ball screw shaft</span><strong id="out_tpeak_bs">—</strong></div>
-            <div class="metric-card"><span>Speed Required at ball screw shaft</span><strong id="out_nscrew">—</strong></div>
-            <div class="metric-card"><span>Linear Speed of the ball screw shaft</span><strong id="out_vmax">—</strong></div>
+
+        <!-- Hero: Motor shaft demand — what drives motor selection -->
+        <div class="pr-hero">
+          <div class="pr-hero-card">
+            <span>Peak Torque — Motor Shaft</span>
+            <strong id="out_tpeak_motor">—</strong>
           </div>
-          <div class="metric-grid" style="margin-top:10px;">
-            <div class="metric-card" style="background:#eff6ff;border:1px solid #bfdbfe;"><span>Total Torque during Acceleration (Tl + Ta)</span><strong id="out_t_total_accel">—</strong></div>
-            <div class="metric-card" style="background:#f0fdf4;border:1px solid #bbf7d0;"><span>Total Torque during Top Speed (Tl)</span><strong id="out_t_total_topspeed">—</strong></div>
-            <div class="metric-card" style="background:#fff7ed;border:1px solid #fed7aa;"><span>Total Torque during Deceleration (Tl − Td)</span><strong id="out_t_total_decel">—</strong></div>
-          </div>
-          <div class="metric-grid" style="margin-top:8px;">
-            <div class="metric-card" style="background:var(--bg-subtle,#f8fafc);"><span>Acceleration Torque (Ta)</span><strong id="out_t_accel">—</strong></div>
-            <div class="metric-card" style="background:var(--bg-subtle,#f8fafc);"><span>Deceleration Torque (Td)</span><strong id="out_t_decel">—</strong></div>
-            <div class="metric-card" style="background:var(--bg-subtle,#f8fafc);"><span>T — Axial Force</span><strong id="out_t_axial">—</strong></div>
-            <div class="metric-card" style="background:var(--bg-subtle,#f8fafc);"><span>T — Preload</span><strong id="out_t_preload">—</strong></div>
-            <div class="metric-card" style="background:var(--bg-subtle,#f8fafc);"><span>T — Bearing Drag (Fixed + Support)</span><strong id="out_t_bearing_drag">—</strong></div>
+          <div class="pr-hero-card">
+            <span>Peak Speed — Motor Shaft</span>
+            <strong id="out_nmotor">—</strong>
           </div>
         </div>
-        <div class="section-block">
-          <h3>At Motor shaft</h3>
-          <div class="metric-grid">
-            <div class="metric-card"><span>Torque Required at Motor shaft</span><strong id="out_tpeak_motor">—</strong></div>
-            <div class="metric-card"><span>Speed Required at Motor shaft</span><strong id="out_nmotor">—</strong></div>
+
+        <!-- Torque phases: trapezoidal profile at a glance -->
+        <div class="pr-section-label">Torque Phases</div>
+        <div class="pr-phases">
+          <div class="pr-phase pr-phase--accel">
+            <div class="pr-phase-name">Acceleration</div>
+            <div class="pr-phase-formula">T<sub>l</sub> + T<sub>a</sub></div>
+            <strong id="out_t_total_accel">—</strong>
           </div>
+          <div class="pr-phase pr-phase--cruise">
+            <div class="pr-phase-name">Cruise</div>
+            <div class="pr-phase-formula">T<sub>l</sub></div>
+            <strong id="out_t_total_topspeed">—</strong>
+          </div>
+          <div class="pr-phase pr-phase--decel">
+            <div class="pr-phase-name">Deceleration</div>
+            <div class="pr-phase-formula">T<sub>l</sub> − T<sub>d</sub></div>
+            <strong id="out_t_total_decel">—</strong>
+          </div>
+        </div>
+
+        <!-- Component breakdown -->
+        <div class="pr-section-label">Torque Breakdown</div>
+        <div class="pr-breakdown">
+          <div class="pr-chip"><span>Accel (T<sub>a</sub>)</span><strong id="out_t_accel">—</strong></div>
+          <div class="pr-chip"><span>Decel (T<sub>d</sub>)</span><strong id="out_t_decel">—</strong></div>
+          <div class="pr-chip"><span>Axial Force</span><strong id="out_t_axial">—</strong></div>
+          <div class="pr-chip"><span>Preload</span><strong id="out_t_preload">—</strong></div>
+          <div class="pr-chip"><span>Bearing Drag</span><strong id="out_t_bearing_drag">—</strong></div>
+        </div>
+
+        <!-- Ball screw shaft: secondary context -->
+        <div class="pr-section-label">Ball Screw Shaft</div>
+        <div class="pr-screw">
+          <div class="pr-screw-item"><span>Torque</span><strong id="out_tpeak_bs">—</strong></div>
+          <div class="pr-screw-item"><span>Speed</span><strong id="out_nscrew">—</strong></div>
+          <div class="pr-screw-item"><span>Linear Speed</span><strong id="out_vmax">—</strong></div>
         </div>
       </section>
 
@@ -905,9 +1137,9 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
-  <script src="projects.js"></script>
-  <script src="constants.js"></script>
-  <script src="calculations.js"></script>
-  <script src="servo-app.js"></script>
+  <script src="js/projects.js"></script>
+  <script src="js/constants.js"></script>
+  <script src="js/calculations.js"></script>
+  <script src="js/servo-app.js"></script>
 </body>
 </html>

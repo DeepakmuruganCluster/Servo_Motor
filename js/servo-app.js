@@ -450,7 +450,7 @@ function renderMotorTable(result) {
           N:${(speedUtil*100).toFixed(0)}% T:${(torqueUtil*100).toFixed(0)}% J:${(inertiaUtil*100).toFixed(0)}%
         </td>
         <td style="white-space:nowrap" onclick="event.stopPropagation()">
-          <a href="cad%20files/SIEMENS_AG_${motor.pn.replace(/-/g, '')}.zip" download style="font-size:12px;text-decoration:none">&#8681; CAD</a>
+          <a href="cad/SIEMENS_AG_${motor.pn.replace(/-/g, '')}.zip" download style="font-size:12px;text-decoration:none">&#8681; CAD</a>
         </td>
       </tr>`;
   }).join('');
@@ -498,7 +498,7 @@ function renderSelectedMotorDetails(result) {
       </table>
     </div>
     <div class="section-block" style="margin-top:10px">
-      <a href="cad%20files/SIEMENS_AG_${motor.pn.replace(/-/g, '')}.zip"
+      <a href="cad/SIEMENS_AG_${motor.pn.replace(/-/g, '')}.zip"
          download
          class="btn btn-secondary"
          style="display:inline-block;text-decoration:none">
@@ -792,16 +792,15 @@ function renderMovementSteps() {
     return `
     <div class="step-card" data-step="${index}">
       <div class="step-header">
-        <strong>Step ${index + 1}</strong>
-        ${state.steps.length > 1 ? `<button type="button" class="button secondary remove-step" data-step="${index}" style="font-size:11px;padding:4px 10px;">Remove</button>` : ''}
+        <div class="step-header-left">
+          <span class="step-badge">${index + 1}</span>
+          <input class="step-name-input" data-step="${index}" data-field="label" type="text"
+            value="${(step.label || `Step ${index + 1}`).replace(/"/g, '&quot;')}"
+            placeholder="Step ${index + 1}" />
+        </div>
+        ${state.steps.length > 1 ? `<button type="button" class="button secondary remove-step" data-step="${index}" style="font-size:11px;padding:4px 10px;margin-left:10px;">Remove</button>` : ''}
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
-        <div class="field-row" style="grid-column:1/-1;">
-          <label data-tip="Name or identifier for this motion step">
-            <span class="field-label-row">Motion step name</span>
-            <input data-step="${index}" data-field="label" type="text" value="${step.label || ''}" />
-          </label>
-        </div>
         <div class="field-row">
           <label data-tip="Linear travel distance for this step (mm)">
             <span class="field-label-row">Stroke (mm) <span class="sym">s_move_${index+1}</span></span>

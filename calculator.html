@@ -878,10 +878,6 @@
             </div>
           </div>
         </div>
-        <!-- Apex gearbox catalog selection -->
-        <div class="section-block" id="gearbox-suggestion-block">
-          <div id="gb_selection_results" class="gb-selection"></div>
-        </div>
       </section>
 
       <!-- ═══════════════════════════════════════
@@ -1009,19 +1005,13 @@
         </div>
       </section>
 
-      <!-- ════════════════════════════════════════════
-           FULL WIDTH — THK BALL SCREW RECOMMENDATION
-      ════════════════════════════════════════════ -->
-      <section class="card" style="grid-column: 1 / -1;">
-        <div id="bs_selection_results" class="bs-selection"></div>
-      </section>
-
       <!-- ═══════════════════════════════════════
-           FULL WIDTH — MOTOR CATALOG
+           FULL WIDTH — COMPONENT SELECTION
+           One place for all 4 catalog selections, instead of scattered cards.
       ════════════════════════════════════════════ -->
       <section class="card" style="grid-column: 1 / -1;">
         <div class="card-header-row">
-          <h2>Motor Catalog</h2>
+          <h2 class="tight">Component Selection</h2>
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--muted);">
               <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 3h2l.4 2M7 13h10l4-8H5.4"/><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/></svg>
@@ -1031,34 +1021,48 @@
             <span id="inventory-status" style="font-size:12px;color:var(--muted);">No inventory loaded</span>
           </div>
         </div>
-        <div id="motor-best-suggestion" class="footer-note">Motor recommendation appears after inputs are set.</div>
-        <div class="table-wrap">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Part number</th>
-                <th>Series</th>
-                <th>kW</th>
-                <th>Mn (Nm)</th>
-                <th>Mmax (Nm)</th>
-                <th>Nn (rpm)</th>
-                <th>Jmot (kg·cm²)</th>
-                <th>Brake</th>
-                <th>Utilization (N/T/J)</th>
-                <th>CAD</th>
-              </tr>
-            </thead>
-            <tbody id="motor-table-body"></tbody>
-          </table>
+        <div class="component-tabs" role="tablist">
+          <button type="button" class="component-tab" data-tab="motor" role="tab">Motor</button>
+          <button type="button" class="component-tab" data-tab="ballscrew" role="tab">Ball Screw</button>
+          <button type="button" class="component-tab" data-tab="gearbox" role="tab" id="component-tab-gearbox">Gearbox</button>
+          <button type="button" class="component-tab" data-tab="drive" role="tab">Servo Drive</button>
         </div>
-      </section>
 
-      <!-- ═══════════════════════════════════════
-           FULL WIDTH — SERVO DRIVE SELECTION
-      ════════════════════════════════════════════ -->
-      <section class="card" style="grid-column: 1 / -1;">
-        <div id="sd_selection_results" class="sd-selection"></div>
+        <div class="component-tab-panel" data-panel="motor">
+          <div id="motor-best-suggestion" class="footer-note">Motor recommendation appears after inputs are set.</div>
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Part number</th>
+                  <th>Series</th>
+                  <th>kW</th>
+                  <th>Mn (Nm)</th>
+                  <th>Mmax (Nm)</th>
+                  <th>Nn (rpm)</th>
+                  <th>Jmot (kg·cm²)</th>
+                  <th>Brake</th>
+                  <th>Utilization (N/T/J)</th>
+                  <th>CAD</th>
+                </tr>
+              </thead>
+              <tbody id="motor-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="component-tab-panel" data-panel="ballscrew">
+          <div id="bs_selection_results" class="bs-selection"></div>
+        </div>
+
+        <div class="component-tab-panel" data-panel="gearbox">
+          <div id="gb_selection_results" class="gb-selection"></div>
+        </div>
+
+        <div class="component-tab-panel" data-panel="drive">
+          <div id="sd_selection_results" class="sd-selection"></div>
+        </div>
       </section>
 
       <!-- ═══════════════════════════════════════

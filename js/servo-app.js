@@ -7,6 +7,7 @@ let selectedMotorIdx = -1;
 let lastResult = null;
 let inventoryItems = new Map(); // PN (uppercase) → device type (lowercase: 'motor'/'ballscrew'/'gearbox'/'drive', or '' meaning any type)
 let lastExcelImportTrace = null;
+let activeComponentTab = 'motor'; // which tab is open in the consolidated Component Selection card
 
 // result.selectedMotor is captured by calculate() at the top of render(), before render()'s own
 // motor auto-sync block runs — so on the render pass where a motor first gets auto-selected,
@@ -458,6 +459,7 @@ function render() {
   renderVerification(result);
   renderSelectedMotorDetails(result);
   renderSelectedComponentsSummary(result);
+  renderComponentTabStatus(result);
   renderMotionProfileChart();
   if (document.getElementById('show-torque-chart')?.checked)       renderTorqueChart();
   if (document.getElementById('show-displacement-chart')?.checked) renderDisplacementChart();
@@ -996,6 +998,53 @@ function renderInputs() {
   }
 }
 
+/* Switches which panel is visible in the consolidated Component Selection card (Motor / Ball
+   Screw / Gearbox / Servo Drive) — replaces what used to be 4 separate scattered cards, so a
+   designer sees one place for the whole selection story instead of hunting across the page. */
+function switchComponentTab(tab) {
+  activeComponentTab = tab;
+  document.querySelectorAll('.component-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+  document.querySelectorAll('.component-tab-panel').forEach(panel => {
+    panel.classList.toggle('active', panel.dataset.panel === tab);
+  });
+}
+
+/* Small status dot on each tab (● green = applied/resolved from catalog, ● amber = manual/not
+   yet resolved) so the designer can see at a glance which components still need attention
+   without clicking into every tab. */
+function renderComponentTabStatus(result) {
+  const rows = (typeof getSelectedComponentsSummary === 'function') ? getSelectedComponentsSummary(result) : [];
+  const byComponent = {};
+  rows.forEach(r => { byComponent[r.component] = r.status; });
+  const okStatuses = new Set(['Selected', 'Applied from catalog', 'Recommended']);
+  const dotFor = status => (status && okStatuses.has(status)) ? 'ok' : 'warn';
+  const tabs = [
+    ['motor', byComponent['Servo Motor']],
+    ['ballscrew', byComponent['Ball Screw']],
+    ['drive', byComponent['Servo Drive']],
+  ];
+  tabs.forEach(([tab, status]) => {
+    const btn = document.querySelector(`.component-tab[data-tab="${tab}"]`);
+    if (!btn) return;
+    let dot = btn.querySelector('.tab-status');
+    if (!dot) { dot = document.createElement('span'); dot.className = 'tab-status'; btn.appendChild(dot); }
+    dot.className = 'tab-status ' + dotFor(status);
+  });
+  // Gearbox only gets a dot when it's actually part of the configuration.
+  const gbBtn = document.querySelector('.component-tab[data-tab="gearbox"]');
+  if (gbBtn) {
+    let dot = gbBtn.querySelector('.tab-status');
+    if (Number(state.has_gearbox) !== 0) {
+      if (!dot) { dot = document.createElement('span'); dot.className = 'tab-status'; gbBtn.appendChild(dot); }
+      dot.className = 'tab-status ' + dotFor(byComponent['Gearbox']);
+    } else if (dot) {
+      dot.remove();
+    }
+  }
+}
+
 function updateMechanicalVisibility() {
   const ctx = (typeof Projects !== 'undefined') ? Projects.getContext() : null;
   const projCfg = (ctx && typeof Projects !== 'undefined') ? (Projects.get(ctx.projectId)?.config || null) : null;
@@ -1004,7 +1053,7 @@ function updateMechanicalVisibility() {
   const lmGuideRow       = document.getElementById('lm-guide-row');
   const parallelBlock    = document.getElementById('parallel-kit-block');
   const gearboxBlock     = document.getElementById('gearbox-block');
-  const gearboxSuggestionBlock = document.getElementById('gearbox-suggestion-block');
+  const gearboxTab       = document.getElementById('component-tab-gearbox');
   const cbPanel          = document.getElementById('cb-panel');
   const cbGuideFields    = document.getElementById('cb-guide-fields');
 
@@ -1020,8 +1069,12 @@ function updateMechanicalVisibility() {
   if (parallelBlock)     parallelBlock.style.display     = hasParallel ? '' : 'none';
   if (gearboxBlock)      gearboxBlock.style.display      = hasGearbox  ? '' : 'none';
   // Gearbox catalog recommendations are only relevant when a gearbox is actually part of this
-  // mechanical configuration — hidden (and not evaluated in render()) when has_gearbox is No.
-  if (gearboxSuggestionBlock) gearboxSuggestionBlock.style.display = hasGearbox ? '' : 'none';
+  // mechanical configuration — the Gearbox tab is hidden (and not evaluated in render()) when
+  // has_gearbox is No. If it was the active tab when it disappears, fall back to Motor.
+  if (gearboxTab) {
+    gearboxTab.style.display = hasGearbox ? '' : 'none';
+    if (!hasGearbox && activeComponentTab === 'gearbox') switchComponentTab('motor');
+  }
   if (cbPanel)           cbPanel.style.display           = hasCB       ? '' : 'none';
   if (cbGuideFields)     cbGuideFields.style.display     = (hasCB && cbType === 'guide_shaft') ? 'contents' : 'none';
 
@@ -1854,6 +1907,11 @@ function bindInputs() {
   document.querySelectorAll('[data-key]').forEach(el => {
     el.addEventListener('input', handleInput);
   });
+
+  document.querySelectorAll('.component-tab').forEach(btn => {
+    btn.addEventListener('click', () => switchComponentTab(btn.dataset.tab));
+  });
+  switchComponentTab(activeComponentTab);
 
   const movementContainer = document.getElementById('movement-steps-container');
   if (movementContainer) {

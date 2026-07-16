@@ -48,6 +48,17 @@ main { flex: 1; width: min(1400px, 100%); margin: 26px auto 40px; padding: 0 20p
    Checklist" beneath its summary table) — a visible rule instead of margin guesswork. */
 .subsection-divider { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border); }
 .subsection-heading { margin: 0; font-size: 14px; font-weight: 700; }
+/* Component Selection card: Motor / Ball Screw / Gearbox / Servo Drive consolidated into one
+   tabbed card instead of four separate scattered ones. */
+.component-tabs { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+.component-tab { background: none; border: none; border-bottom: 2px solid transparent; padding: 10px 16px; font-size: 14px; font-weight: 600; color: var(--muted); margin-bottom: -1px; transition: color .15s, border-color .15s; }
+.component-tab:hover { color: var(--text); }
+.component-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.component-tab .tab-status { display: inline-block; width: 7px; height: 7px; border-radius: 999px; margin-left: 7px; vertical-align: middle; }
+.component-tab .tab-status.ok { background: var(--success); }
+.component-tab .tab-status.warn { background: var(--warning); }
+.component-tab-panel { display: none; }
+.component-tab-panel.active { display: block; }
 .field-grid { display: grid; gap: 16px; }
 .field-row { display: grid; gap: 10px; }
 .field-row label { display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--muted); }

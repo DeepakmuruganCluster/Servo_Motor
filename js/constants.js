@@ -69,27 +69,38 @@ const DEFAULT_STATE = {
   gb_no_load_torque: 0.01,
   gb_inertia: 0,
   gb_backlash: 0,
-  gb_rated_input_speed: 0,
-  gb_rated_output_torque: 0,
+  gb_rated_input_speed: 6000,
+  gb_rated_output_torque: 50,
   sm_permitted_inertia_ratio: 7,
   sm_encoder_ppr: 1048576,
   safety_factor: 20,
   motor_user_selected: false,
+  bs_user_selected: false,
+  sd_applied_pn: '',
+  sd_user_selected: false,
 };
 
+// In (rated current, A) and Imax (max/peak current, A) sourced from Siemens' own SIMOTICS S-1FK2
+// datasheets (mall.industry.siemens.com docuservice, "Rated current" / "Maximum current" fields
+// under the SINAMICS S210 3AC 400V rated-data block) — used by js/drive-selection.js to verify a
+// candidate drive can actually supply this motor's current, not just its power rating.
+// phases: the supply phase count (1 or 3) that this motor's rated speed/torque/current data was
+// published for. All 1FK2 motors currently in this catalog have their rated data confirmed (per
+// official Siemens datasheets) as SINAMICS S210 3AC 400V only — so phases:3 for every entry.
+// js/drive-selection.js hard-rejects any candidate drive whose input_phases doesn't match.
 const MOTOR_DB = [
-  { pn:'1FK2103-2AH00-0MA0', series:'1FK2', kW:0.28,  Mn:0.60, Mmax:1.95,  Nn:4500, Nmax:8000, Jmot:0.093, brake:false },
-  { pn:'1FK2103-2AH10-0MA0', series:'1FK2', kW:0.28,  Mn:0.60, Mmax:1.95,  Nn:4500, Nmax:8000, Jmot:0.093, brake:true  },
-  { pn:'1FK2103-4AH00-0MA0', series:'1FK2', kW:0.48,  Mn:1.27, Mmax:4.05,  Nn:4500, Nmax:8000, Jmot:0.14,  brake:false },
-  { pn:'1FK2103-4AH10-0MA0', series:'1FK2', kW:0.48,  Mn:1.27, Mmax:4.05,  Nn:4500, Nmax:8000, Jmot:0.14,  brake:true  },
-  { pn:'1FK2104-4AF00-0MA0', series:'1FK2', kW:0.40,  Mn:1.27, Mmax:3.75,  Nn:3000, Nmax:7200, Jmot:0.35,  brake:false },
-  { pn:'1FK2104-4AF10-0MA0', series:'1FK2', kW:0.40,  Mn:1.27, Mmax:3.75,  Nn:3000, Nmax:7200, Jmot:0.35,  brake:true  },
-  { pn:'1FK2104-4AK00-0MA0', series:'1FK2', kW:0.60,  Mn:0.90, Mmax:3.85,  Nn:6000, Nmax:8000, Jmot:0.35,  brake:false },
-  { pn:'1FK2104-4AK10-0MA0', series:'1FK2', kW:0.60,  Mn:0.90, Mmax:3.85,  Nn:6000, Nmax:8000, Jmot:0.35,  brake:true  },
-  { pn:'1FK2104-5AF00-0MA0', series:'1FK2', kW:0.75,  Mn:2.40, Mmax:7.50,  Nn:3000, Nmax:6700, Jmot:0.56,  brake:false },
-  { pn:'1FK2104-5AF10-0MA0', series:'1FK2', kW:0.75,  Mn:2.40, Mmax:7.50,  Nn:3000, Nmax:6700, Jmot:0.56,  brake:true  },
-  { pn:'1FK2104-5AK00-0MA0', series:'1FK2', kW:1.07,  Mn:1.50, Mmax:7.60,  Nn:6000, Nmax:8000, Jmot:0.56,  brake:false },
-  { pn:'1FK2104-5AK10-0MA0', series:'1FK2', kW:1.07,  Mn:1.50, Mmax:7.60,  Nn:6000, Nmax:8000, Jmot:0.56,  brake:true  },
-  { pn:'1FK2104-6AF00-0MA0', series:'1FK2', kW:1.00,  Mn:3.20, Mmax:10.0,  Nn:3000, Nmax:7200, Jmot:0.76,  brake:false },
-  { pn:'1FK2104-6AF10-0MA0', series:'1FK2', kW:1.00,  Mn:3.20, Mmax:10.0,  Nn:3000, Nmax:7200, Jmot:0.76,  brake:true  },
+  { pn:'1FK2103-2AH00-0MA0', series:'1FK2', kW:0.28,  Mn:0.60, Mmax:1.95,  Nn:4500, Nmax:8000, Jmot:0.093, brake:false, In:1.1, Imax:4.0,  phases:3 },
+  { pn:'1FK2103-2AH10-0MA0', series:'1FK2', kW:0.28,  Mn:0.60, Mmax:1.95,  Nn:4500, Nmax:8000, Jmot:0.093, brake:true,  In:1.1, Imax:4.0,  phases:3 },
+  { pn:'1FK2103-4AH00-0MA0', series:'1FK2', kW:0.48,  Mn:1.27, Mmax:4.05,  Nn:4500, Nmax:8000, Jmot:0.14,  brake:false, In:1.6, Imax:7.1,  phases:3 },
+  { pn:'1FK2103-4AH10-0MA0', series:'1FK2', kW:0.48,  Mn:1.27, Mmax:4.05,  Nn:4500, Nmax:8000, Jmot:0.14,  brake:true,  In:1.6, Imax:7.1,  phases:3 },
+  { pn:'1FK2104-4AF00-0MA0', series:'1FK2', kW:0.40,  Mn:1.27, Mmax:3.75,  Nn:3000, Nmax:7200, Jmot:0.35,  brake:false, In:1.2, Imax:4.2,  phases:3 },
+  { pn:'1FK2104-4AF10-0MA0', series:'1FK2', kW:0.40,  Mn:1.27, Mmax:3.75,  Nn:3000, Nmax:7200, Jmot:0.35,  brake:true,  In:1.2, Imax:4.2,  phases:3 },
+  { pn:'1FK2104-4AK00-0MA0', series:'1FK2', kW:0.60,  Mn:0.90, Mmax:3.85,  Nn:6000, Nmax:8000, Jmot:0.35,  brake:false, In:1.9, Imax:8.7,  phases:3 },
+  { pn:'1FK2104-4AK10-0MA0', series:'1FK2', kW:0.60,  Mn:0.90, Mmax:3.85,  Nn:6000, Nmax:8000, Jmot:0.35,  brake:true,  In:1.9, Imax:8.7,  phases:3 },
+  { pn:'1FK2104-5AF00-0MA0', series:'1FK2', kW:0.75,  Mn:2.40, Mmax:7.50,  Nn:3000, Nmax:6700, Jmot:0.56,  brake:false, In:2.1, Imax:7.6,  phases:3 },
+  { pn:'1FK2104-5AF10-0MA0', series:'1FK2', kW:0.75,  Mn:2.40, Mmax:7.50,  Nn:3000, Nmax:6700, Jmot:0.56,  brake:true,  In:2.1, Imax:7.6,  phases:3 },
+  { pn:'1FK2104-5AK00-0MA0', series:'1FK2', kW:1.07,  Mn:1.50, Mmax:7.60,  Nn:6000, Nmax:8000, Jmot:0.56,  brake:false, In:3.2, Imax:16.0, phases:3 },
+  { pn:'1FK2104-5AK10-0MA0', series:'1FK2', kW:1.07,  Mn:1.50, Mmax:7.60,  Nn:6000, Nmax:8000, Jmot:0.56,  brake:true,  In:3.2, Imax:16.0, phases:3 },
+  { pn:'1FK2104-6AF00-0MA0', series:'1FK2', kW:1.00,  Mn:3.20, Mmax:10.0,  Nn:3000, Nmax:7200, Jmot:0.76,  brake:false, In:3.0, Imax:10.9, phases:3 },
+  { pn:'1FK2104-6AF10-0MA0', series:'1FK2', kW:1.00,  Mn:3.20, Mmax:10.0,  Nn:3000, Nmax:7200, Jmot:0.76,  brake:true,  In:3.0, Imax:10.9, phases:3 },
 ];

@@ -32,6 +32,22 @@ main { flex: 1; width: min(1400px, 100%); margin: 26px auto 40px; padding: 0 20p
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 24px; }
 .card.smaller { padding: 18px; }
 .card h2, .section-title { margin: 0 0 18px; font-size: 18px; letter-spacing: .01em; }
+/* h2 immediately followed by a .card-subtitle: tighten the h2's own margin so the
+   heading + subtitle read as one block, then .card-subtitle carries the standard 18px gap. */
+.card h2.tight { margin-bottom: 6px; }
+.card-subtitle { margin: 0 0 18px; font-size: 13px; color: var(--muted); }
+/* Header row with controls (buttons, toggles) beside the h2 — always the same 18px gap
+   before whatever comes next, same as a plain h2 with no row. */
+.card-header-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
+.card-header-row h2 { margin: 0; }
+/* Small-caps muted label marking a sub-group within a card (e.g. "Import from Excel"). */
+.subsection-label { margin: 0 0 10px; font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+/* Plain (non-uppercase) caption directly above a chart or figure. */
+.chart-caption { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--muted); }
+/* Divider marking a detail sub-panel within a card (e.g. a catalog selector's "Selection
+   Checklist" beneath its summary table) — a visible rule instead of margin guesswork. */
+.subsection-divider { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border); }
+.subsection-heading { margin: 0; font-size: 14px; font-weight: 700; }
 .field-grid { display: grid; gap: 16px; }
 .field-row { display: grid; gap: 10px; }
 .field-row label { display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--muted); }

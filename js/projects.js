@@ -107,7 +107,7 @@
     },
 
     /** Update a servo's persisted state and status after an edit session. */
-    updateServo(projectId, servoId, { state, motorIdx, motor, status, metrics } = {}) {
+    updateServo(projectId, servoId, { state, motorIdx, motor, status, metrics, components } = {}) {
       const store = getStore();
       const proj = store.projects[projectId];
       if (!proj) return;
@@ -118,6 +118,7 @@
       if (motor !== undefined) servo.motor = motor;
       if (status !== undefined) servo.status = status;
       if (metrics !== undefined) servo.metrics = metrics;
+      if (components !== undefined) servo.components = components;
       servo.lastUpdated = now();
       proj.lastUpdated = now();
       saveStore(store);
@@ -200,14 +201,21 @@
  * Formula:
  * (sum(Must * acquisitionFactor) + sum(Critical * acquisitionFactor) + sum(Additional * acquisitionFactor))
  * * selectionModelFactor
- * where category accuracies are Must=60%, Critical=30%, Additional=10%.
+ * where category accuracies are Must=60%, Critical=30%, Additional=10%, and selectionModelFactor
+ * (0.9-1.0) scales with how many of the drivetrain components (motor, ball screw, gearbox when
+ * used, servo drive) resolved to a real catalog part vs. a manual/unmatched value.
  *
- * Accepts either a servo object ({ state, motorIdx, metrics, ... })
+ * Accepts either a servo object ({ state, motorIdx, metrics, components, ... })
  * or a raw state object.
  */
 function calculateConfidence(input) {
   const servo = input && input.state ? input : { state: input || {} };
-  const state = servo.state || {};
+  // Merge with DEFAULT_STATE exactly like js/servo-app.js's loadState() does — otherwise a field
+  // that's merely defaulted (never explicitly saved) reads as "missing" here but as "present"
+  // the moment the designer opens this application in the calculator (which persists the merged
+  // state back), making the score jump even though no real value changed.
+  const rawState = servo.state || {};
+  const state = (typeof DEFAULT_STATE !== 'undefined') ? Object.assign({}, DEFAULT_STATE, rawState) : rawState;
   const steps = Array.isArray(state.steps) && state.steps.length > 0 ? state.steps : [];
   const s0 = steps[0] || {};
   const hasPK = Number(state.has_parallel_kit) !== 0;
@@ -230,7 +238,12 @@ function calculateConfidence(input) {
     entry(hasNumber(s0.move_time)),
     entry(hasNumber(s0.external_force, true)),
     entry(hasNumber(s0.load_mass)),
-    entry(hasNumber(s0.tilt_deg, true)),
+    // Tilt is a single top-level input applying to the whole application (state.tilt_deg — see
+    // js/calculations.js and the calculator's own "Payload inclination angle" field), not a
+    // per-step value. steps[0].tilt_deg is a leftover from an older per-step model that the
+    // calculator's own state no longer carries at all — checking it here made confidence swing
+    // the moment an application was opened in the calculator and re-saved, even with zero edits.
+    entry(hasNumber(state.tilt_deg, true)),
     entry(hasNumber(state.project_accuracy)),
     entry(hasNumber(state.bs_pitch)),
     entry(hasNumber(state.bs_dia)),
@@ -272,11 +285,22 @@ function calculateConfidence(input) {
     weightedCategoryScore(critical, ACCURACY.critical) +
     weightedCategoryScore(additional, ACCURACY.additional);
 
-  // Selection model factor
-  // Catalogue selection: motor resolved from catalog in-app
-  // Application selection: external/manual motor reference
-  const hasCatalogSelection = Number(servo.motorIdx) >= 0 && !!servo.metrics;
-  const selectionModelFactor = hasCatalogSelection ? 1.0 : 0.9;
+  // Selection model factor — how much of the drivetrain was resolved from a real catalog part
+  // vs. left as a manual/unmatched value. Checked per component (motor, ball screw, gearbox
+  // when used, servo drive) and averaged, so a project with e.g. a catalog motor + ball screw
+  // but a manual gearbox scores between the two extremes instead of an all-or-nothing toggle.
+  const comp = servo.components || {};
+  const componentChecks = [
+    { applicable: true, ok: Number(servo.motorIdx) >= 0 && !!servo.metrics },      // Servo Motor
+    { applicable: true, ok: !!comp.ballScrewPn },                                  // Ball Screw
+    { applicable: Number(state.has_gearbox) !== 0, ok: !!comp.gearboxPn },         // Gearbox (only if used)
+    { applicable: true, ok: !!comp.drivePn },                                      // Servo Drive
+  ];
+  const applicableChecks = componentChecks.filter(c => c.applicable);
+  const resolvedFraction = applicableChecks.length
+    ? applicableChecks.filter(c => c.ok).length / applicableChecks.length
+    : 0;
+  const selectionModelFactor = 0.9 + 0.1 * resolvedFraction;
 
   return Math.round(baseScore * selectionModelFactor * 100);
 }

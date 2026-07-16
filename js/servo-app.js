@@ -5,8 +5,17 @@
 let state = {};
 let selectedMotorIdx = -1;
 let lastResult = null;
-let inventoryItems = new Map(); // PN (uppercase) → device type (lowercase), e.g. 'motor', 'drive', 'gearbox'
+let inventoryItems = new Map(); // PN (uppercase) → device type (lowercase: 'motor'/'ballscrew'/'gearbox'/'drive', or '' meaning any type)
 let lastExcelImportTrace = null;
+
+// result.selectedMotor is captured by calculate() at the top of render(), before render()'s own
+// motor auto-sync block runs — so on the render pass where a motor first gets auto-selected,
+// result.selectedMotor is stale (null) even though selectedMotorIdx is already valid. Callers
+// that run after the auto-sync block (i.e. everything except calculate() itself) should read the
+// live selection through this helper instead of result.selectedMotor directly.
+function getCurrentMotor(result) {
+  return selectedMotorIdx >= 0 ? MOTOR_DB[selectedMotorIdx] : (result ? result.selectedMotor : null);
+}
 
 function saveState() {
   state.__stateVersion = STATE_VERSION;
@@ -61,7 +70,7 @@ function loadInventoryFile(file) {
       rows.slice(startRow).forEach(row => {
         const pn = String(row[0] ?? '').trim();
         if (!pn) return;
-        const type = String(row[1] ?? '').trim().toLowerCase() || 'motor'; // default to motor if blank
+        const type = String(row[1] ?? '').trim().toLowerCase(); // blank = matches any device type (motor/ballscrew/gearbox/drive)
         inventoryItems.set(pn.toUpperCase(), type);
       });
       const el = document.getElementById('inventory-status');
@@ -301,7 +310,7 @@ function renderMetric(id, value, digits = 2, unit = '') {
 }
 
 function render() {
-  const result = calculate();
+  let result = calculate();
   lastResult = result;
   updateMechanicalVisibility();
 
@@ -328,6 +337,88 @@ function render() {
       selectedMotorIdx = best.index;
       saveMotorSelection();
     }
+  }
+
+  // calculate() computes motor-dependent fields (inertia_ratio) from whatever selectedMotorIdx
+  // was at the top of this function — if auto-sync just changed it, result is stale for those
+  // fields specifically (Nmotor/T_peak_motor/T_peak_bs etc. don't depend on the motor, so they're
+  // fine either way). Recompute once so everything downstream sees the synced motor.
+  if (result.selectedMotor !== (selectedMotorIdx >= 0 ? MOTOR_DB[selectedMotorIdx] : null)) {
+    result = calculate();
+    lastResult = result;
+  }
+
+  // Auto-sync ball screw / gearbox / servo drive to their top catalog recommendation, same
+  // pattern as the motor auto-sync above: runs every render until the designer explicitly
+  // overrides a pick (bs_user_selected / gb_ratio_user_selected / sd_user_selected), either via
+  // "Use this X" or by editing the Ball Screw / Gearbox Inputs panels directly. Field updates are
+  // targeted (not a full renderInputs() sweep) so they don't clobber an input the designer is
+  // actively typing in. Persisted via saveState() so the picks survive a page reload or
+  // navigating away and back (e.g. "Save & Return to Project" reads localStorage, not just the
+  // live in-memory state).
+  //
+  // Uses applyBallScrewFields()/applyGearboxFields() (not a hand-copy of fields off the
+  // evaluate()-returned candidate) because that candidate only carries pn/series/dia/lead —
+  // fields like eff/preload_Nm and the gearbox's rated input speed/output torque live on the RAW
+  // catalog entry, which those functions look up correctly. A prior version copied fields
+  // directly off the candidate and silently wrote bs_efficiency/gb_rated_input_speed etc. as
+  // undefined.
+  function syncInputEl(key) {
+    const el = document.querySelector(`[data-key="${key}"]`);
+    if (el && document.activeElement !== el) el.value = state[key];
+  }
+  let autoSyncChanged = false;
+  if (!state.bs_user_selected && typeof selectBallScrew === 'function' && typeof applyBallScrewFields === 'function') {
+    const bsOut = selectBallScrew({ baseResult: result });
+    const bsTop = bsOut.recommended && bsOut.recommended[0];
+    if (bsTop) {
+      const bsApplied = Math.abs(Number(state.bs_pitch) - bsTop.lead) < 1e-6 && Math.abs(Number(state.bs_dia) - bsTop.dia) < 1e-6;
+      if (!bsApplied && applyBallScrewFields(bsTop.pn)) {
+        ['bs_pitch', 'bs_dia', 'bs_efficiency', 'bs_preload_torque', 'bs_length'].forEach(syncInputEl);
+        result = calculate();
+        lastResult = result;
+        autoSyncChanged = true;
+      }
+    }
+  }
+  if (Number(state.has_gearbox) !== 0 && !state.gb_ratio_user_selected && typeof selectGearbox === 'function' && typeof applyGearboxFields === 'function') {
+    const gbOut = selectGearbox({ baseResult: result });
+    const gbTop = gbOut.recommended && gbOut.recommended[0];
+    if (gbTop) {
+      const gbApplied = Math.abs(Number(state.gb_ratio) - gbTop.ratio) < 1e-6 && String(state.gb_backlash) === String(gbTop.backlash_arcmin);
+      if (!gbApplied && applyGearboxFields(gbTop.pn)) {
+        ['gb_ratio', 'gb_efficiency', 'gb_no_load_torque', 'gb_inertia', 'gb_backlash', 'gb_rated_input_speed', 'gb_rated_output_torque'].forEach(syncInputEl);
+        result = calculate();
+        lastResult = result;
+        autoSyncChanged = true;
+      }
+    }
+  }
+  if (!state.sd_user_selected && typeof selectDrive === 'function') {
+    const sdOut = selectDrive({ baseResult: result });
+    const sdTop = sdOut.recommended && sdOut.recommended[0];
+    if (sdTop && state.sd_applied_pn !== sdTop.pn) {
+      state.sd_applied_pn = sdTop.pn;
+      autoSyncChanged = true;
+    }
+  }
+  if (autoSyncChanged && typeof saveState === 'function') saveState();
+
+  // THK ball screw / Apex gearbox recommendations — after motor auto-sync so selectedMotorIdx is current.
+  if (typeof renderBallScrewSelection === 'function') {
+    try { renderBallScrewSelection('bs_selection_results'); }
+    catch (e) { console.warn('Ball screw selection failed:', e); }
+  }
+  if (typeof renderGearboxSelection === 'function' && Number(state.has_gearbox) !== 0) {
+    try { renderGearboxSelection('gb_selection_results'); }
+    catch (e) { console.warn('Gearbox selection failed:', e); }
+  } else {
+    const gbEl = document.getElementById('gb_selection_results');
+    if (gbEl) gbEl.innerHTML = '';
+  }
+  if (typeof renderDriveSelection === 'function') {
+    try { renderDriveSelection('sd_selection_results'); }
+    catch (e) { console.warn('Drive selection failed:', e); }
   }
 
   renderProjectSummary();
@@ -364,8 +455,9 @@ function render() {
 
   renderMotorTable(result);
   renderBestMotorSuggestion(result);
-  renderGearboxSuggestion(result);
   renderVerification(result);
+  renderSelectedMotorDetails(result);
+  renderSelectedComponentsSummary(result);
   renderMotionProfileChart();
   if (document.getElementById('show-torque-chart')?.checked)       renderTorqueChart();
   if (document.getElementById('show-displacement-chart')?.checked) renderDisplacementChart();
@@ -373,6 +465,13 @@ function render() {
   // Wire download button each render (result changes)
   const dlBtn = document.getElementById('download-report-btn');
   if (dlBtn) { dlBtn.onclick = () => downloadReport(result); }
+
+  // Keep the Projects store in sync with the live motor/ball screw/gearbox/drive picks whenever
+  // this session is editing a project application — don't rely solely on the "Save & Return to
+  // Project" button, since navigating away any other way (browser back, closing the tab) would
+  // otherwise leave the project card showing stale/missing data.
+  const _projCtx = (typeof Projects !== 'undefined') ? Projects.getContext() : null;
+  if (_projCtx) persistServoToProject(_projCtx);
 }
 
 function renderProjectSummary() {
@@ -470,7 +569,7 @@ function renderMotorTable(result) {
 function renderSelectedMotorDetails(result) {
   const details = document.getElementById('selected-motor-details');
   if (!details) return;
-  const motor = result.selectedMotor;
+  const motor = getCurrentMotor(result);
   if (!motor) {
     details.innerHTML = '<p class="info-box">Select a motor from the catalog to verify speed, torque and inertia ratio.</p>';
     return;
@@ -480,6 +579,16 @@ function renderSelectedMotorDetails(result) {
   const speedUtil = result.Nmotor / motor.Nn * 100;
   const torqueUtil = result.T_peak_motor / motor.Mn * 100;
   const inertiaUtil = result.inertia_ratio !== null ? result.inertia_ratio / state.sm_permitted_inertia_ratio * 100 : 0;
+
+  const otherComponents = (typeof getSelectedComponentsSummary === 'function')
+    ? getSelectedComponentsSummary(result).filter(r => r.component !== 'Servo Motor')
+    : [];
+  const componentCards = otherComponents.map(r => `
+      <div class="metric-card small">
+        <span>${r.component}${r.pn ? '' : ' — ' + r.status}</span>
+        <strong>${r.pn || '—'}</strong>
+        ${r.pn ? `<div style="font-size:12px;color:var(--muted);margin-top:6px;">${r.specs || ''}</div>` : ''}
+      </div>`).join('');
 
   details.innerHTML = `
     <div class="metric-grid">
@@ -504,7 +613,12 @@ function renderSelectedMotorDetails(result) {
          style="display:inline-block;text-decoration:none">
         &#8681; Download CAD Files (Inventor)
       </a>
-    </div>`;
+    </div>
+    ${componentCards ? `
+    <div class="subsection-divider"><h4 class="subsection-heading">Rest of the Drivetrain</h4></div>
+    <div class="metric-grid" style="grid-template-columns:repeat(3, minmax(0, 1fr));">
+      ${componentCards}
+    </div>` : ''}`;
 }
 
 /* Calculate total system accuracy — exact Excel formula (calc C208) */
@@ -520,7 +634,7 @@ function calculateSystemAccuracy() {
 function renderVerification(result) {
   const tbody = document.getElementById('verification-body');
   if (!tbody) return;
-  const motor = result.selectedMotor;
+  const motor = getCurrentMotor(result);
 
   function fmtUtil(util) {
     if (util === null || util === undefined || !isFinite(util)) return '#DIV/0!';
@@ -641,104 +755,73 @@ function renderVerification(result) {
   }).join('');
 }
 
-function renderGearboxSuggestion(result) {
-  const tbody = document.getElementById('gearbox-suggestion-body');
-  const suggestion = document.getElementById('gearbox-best-suggestion');
-  if (!tbody || !suggestion) return;
+/* Shared by the on-page summary card and the PDF report — one place that answers
+   "what's actually configured right now" across all four selectable components. */
+function getSelectedComponentsSummary(result) {
+  const motor = getCurrentMotor(result);
+  const ballScrew = (typeof getAppliedBallScrew === 'function') ? getAppliedBallScrew() : null;
+  const gearbox = (typeof getAppliedGearbox === 'function') ? getAppliedGearbox() : null;
+  const drive = (typeof getRecommendedDrive === 'function') ? getRecommendedDrive() : null;
+  const driveApplied = (typeof getAppliedDrive === 'function') ? !!getAppliedDrive() : false;
+  const hasGearbox = Number(state.has_gearbox) !== 0;
 
-  const selectedMotor = result.selectedMotor;
-  const options = [1, 3, 4, 5, 7, 10];
-  const rows = options.map(ratio => {
-    const motorTorque = result.T_peak_bs / (ratio * state.gb_efficiency) + state.gb_no_load_torque;
-    const motorSpeed = result.Nscrew * state.pk_ratio * ratio;
-    const speedOk = selectedMotor ? motorSpeed <= selectedMotor.Nn : true;
-    const torqueOk = selectedMotor ? motorTorque <= selectedMotor.Mn : true;
-    const score = motorTorque * 0.6 + motorSpeed * 0.4 + ((selectedMotor && (!speedOk || !torqueOk)) ? 2000 : 0);
-    return {
-      ratio,
-      motorTorque,
-      motorSpeed,
-      speedOk,
-      torqueOk,
-      score,
-    };
-  });
-
-  // Only keep viable ratios, sorted by lowest ratio first
-  const viableRows = rows.filter(r => r.speedOk && r.torqueOk)
-    .sort((a, b) => a.ratio - b.ratio);
-
-  if (viableRows.length === 0) {
-    suggestion.innerHTML = 'No viable gearbox ratio found for the selected motor and load.';
-    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:12px;color:var(--muted)">No viable gearbox ratio — select a motor first or adjust parameters.</td></tr>`;
-    return;
-  }
-
-  const best = viableRows[0];
-  // Never silently overwrite the user's GB ratio — only show a suggestion.
-  // The user must explicitly click "Use Recommended" to apply a different ratio.
-
-  const direct = viableRows.find(r => r.ratio === 1);
-  const directTorque = direct ? direct.motorTorque : viableRows[viableRows.length - 1].motorTorque;
-  const saving = best.ratio > 1
-    ? Math.round((1 - best.motorTorque / directTorque) * 100)
-    : 0;
-
-  let note = `<strong>Recommended ratio: ${best.ratio}:1</strong> — motor torque ${best.motorTorque.toFixed(2)} Nm at ${Math.round(best.motorSpeed)} rpm`;
-  if (selectedMotor) note += ` (${selectedMotor.pn})`;
-  if (saving > 0) {
-    note += `.<br><span style="color:var(--success)">&#10003; ${saving}% torque reduction vs direct drive — enables a smaller, lower-cost motor.</span>`;
-  } else {
-    note += '. Direct drive is optimal for this load.';
-  }
-  suggestion.innerHTML = note;
-
-  const activeRatio = state.gb_ratio;
-
-  tbody.innerHTML = viableRows.map((row, i) => {
-    const isActive = row.ratio === activeRatio;
-    const isBest   = i === 0;
-    const rowSaving = row.ratio > 1 && directTorque > 0
-      ? Math.round((1 - row.motorTorque / directTorque) * 100)
-      : 0;
-    const savingTxt = rowSaving > 0
-      ? `<span style="color:var(--success);font-weight:600">&#8595; ${rowSaving}% smaller motor</span>`
-      : `<span style="color:var(--muted)">baseline</span>`;
-    const activeBadge = isActive ? ' <span style="font-size:10px;background:var(--accent);color:#fff;padding:1px 6px;border-radius:99px;vertical-align:middle">active</span>' : '';
-    return `
-      <tr class="${isActive ? 'selected' : ''}" data-ratio="${row.ratio}"
-          style="cursor:pointer" title="Click to apply ${row.ratio}:1 and auto-suggest motor">
-        <td>${isBest ? '&#9733; ' : ''}${row.ratio}:1${activeBadge}</td>
-        <td class="mono">${row.motorTorque.toFixed(2)} Nm</td>
-        <td class="mono">${Math.round(row.motorSpeed)} rpm</td>
-        <td>${savingTxt}</td>
-        <td><span class="badge badge-ok">Viable</span></td>
-      </tr>`;
-  }).join('');
-
-  tbody.querySelectorAll('tr').forEach(tr => {
-    tr.addEventListener('click', () => {
-      const ratio = Number(tr.dataset.ratio);
-      state.gb_ratio = ratio;
-      state.gb_ratio_user_selected = true;
-      // Update the input field visually
-      const inp = document.querySelector('[data-key="gb_ratio"]');
-      if (inp) inp.value = ratio;
-      saveState();
-      const newResult = calculate();
-      // Auto-suggest best motor for new ratio (soft — user can override)
-      const best = suggestBestMotor(newResult);
-      if (best) {
-        selectedMotorIdx = best.index;
-        saveState();
-        render();
-      } else {
-        render();
-      }
-    });
-  });
+  return [
+    {
+      component: 'Servo Motor',
+      pn: motor ? motor.pn : null,
+      specs: motor
+        ? `${motor.kW.toFixed(2)} kW · Mn ${motor.Mn.toFixed(2)} Nm · Mmax ${motor.Mmax.toFixed(2)} Nm · Nn ${motor.Nn} rpm${motor.brake ? ' · Brake' : ''}`
+        : null,
+      status: motor ? 'Selected' : 'Not selected',
+    },
+    {
+      component: 'Ball Screw',
+      pn: ballScrew ? ballScrew.pn : null,
+      specs: ballScrew
+        ? `Ø${ballScrew.dia} / lead ${ballScrew.lead} mm · Ca ${ballScrew.Ca} N · C0a ${ballScrew.C0a} N`
+        : `Ø${state.bs_dia} / lead ${state.bs_pitch} mm — manually configured, not matched to a catalog part`,
+      status: ballScrew ? 'Applied from catalog' : 'Manual / custom',
+    },
+    {
+      component: 'Gearbox',
+      pn: gearbox ? gearbox.pn : null,
+      specs: gearbox
+        ? `${gearbox.series} · ${gearbox.ratio}:1 · ${gearbox.rated_torque_Nm} Nm rated`
+        : (hasGearbox ? `${state.gb_ratio}:1 — manually configured, not matched to a catalog part` : 'Direct drive (no gearbox)'),
+      status: gearbox ? 'Applied from catalog' : (hasGearbox ? 'Manual / custom' : 'Not used'),
+    },
+    {
+      component: 'Servo Drive',
+      pn: drive ? drive.pn : null,
+      specs: drive
+        ? `${drive.series} · ${drive.rated_power_kW.toFixed(2)} kW · ${drive.rated_current_A}A rated / ${drive.max_current_A}A peak`
+        : null,
+      status: drive ? (driveApplied ? 'Applied from catalog' : 'Recommended') : (motor ? 'No match found' : 'Select a motor first'),
+    },
+  ];
 }
 
+function renderSelectedComponentsSummary(result) {
+  const container = document.getElementById('selected-components-summary');
+  if (!container) return;
+  const rows = getSelectedComponentsSummary(result);
+  function badgeClass(status) {
+    return (status === 'Selected' || status === 'Applied from catalog' || status === 'Recommended') ? 'badge-ok' : 'badge-warn';
+  }
+  container.innerHTML = `
+    <table class="checklist">
+      <thead><tr><th>Component</th><th>Part No.</th><th>Specification</th><th>Status</th></tr></thead>
+      <tbody>
+        ${rows.map(r => `
+          <tr>
+            <td>${r.component}</td>
+            <td class="mono">${r.pn || '—'}</td>
+            <td class="mono">${r.specs || '—'}</td>
+            <td><span class="badge ${badgeClass(r.status)}">${r.status}</span></td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
 
 function renderBestMotorSuggestion(result) {
   const container = document.getElementById('motor-best-suggestion');
@@ -921,7 +1004,7 @@ function updateMechanicalVisibility() {
   const lmGuideRow       = document.getElementById('lm-guide-row');
   const parallelBlock    = document.getElementById('parallel-kit-block');
   const gearboxBlock     = document.getElementById('gearbox-block');
-  const gbSuggestionBlock= document.getElementById('gearbox-suggestion-block');
+  const gearboxSuggestionBlock = document.getElementById('gearbox-suggestion-block');
   const cbPanel          = document.getElementById('cb-panel');
   const cbGuideFields    = document.getElementById('cb-guide-fields');
 
@@ -936,7 +1019,9 @@ function updateMechanicalVisibility() {
   if (guideBlock)        guideBlock.style.display        = hasLM      ? '' : 'none';
   if (parallelBlock)     parallelBlock.style.display     = hasParallel ? '' : 'none';
   if (gearboxBlock)      gearboxBlock.style.display      = hasGearbox  ? '' : 'none';
-  if (gbSuggestionBlock) gbSuggestionBlock.style.display = hasGearbox  ? '' : 'none';
+  // Gearbox catalog recommendations are only relevant when a gearbox is actually part of this
+  // mechanical configuration — hidden (and not evaluated in render()) when has_gearbox is No.
+  if (gearboxSuggestionBlock) gearboxSuggestionBlock.style.display = hasGearbox ? '' : 'none';
   if (cbPanel)           cbPanel.style.display           = hasCB       ? '' : 'none';
   if (cbGuideFields)     cbGuideFields.style.display     = (hasCB && cbType === 'guide_shaft') ? 'contents' : 'none';
 
@@ -982,6 +1067,9 @@ function handleInput(event) {
     }
     if (key === 'gb_ratio') {
       state.gb_ratio_user_selected = true;
+    }
+    if (key === 'bs_pitch' || key === 'bs_dia' || key === 'bs_efficiency' || key === 'bs_preload_torque' || key === 'bs_length') {
+      state.bs_user_selected = true;
     }
     if (key === 'tilt_deg' || key === 'cb_angle_deg') {
       state[key] = Math.min(90, Math.max(0, state[key] || 0));
@@ -1953,61 +2041,78 @@ function injectProjectContextBanner() {
   saveBtn.addEventListener('click', () => {
     saveState();
     saveMotorSelection();
-
-    // Determine status from last computed result and selected motor
-    let status = 'NO MOTOR';
-    let motorPN = null;
-    if (selectedMotorIdx >= 0 && selectedMotorIdx < MOTOR_DB.length && lastResult) {
-      const motor = MOTOR_DB[selectedMotorIdx];
-      motorPN = motor.pn;
-      const J_rotor = motor.Jmot * 1e-4;
-      const speedOk  = lastResult.Nmotor <= motor.Nn;
-      const torqueOk = lastResult.T_peak_motor <= motor.Mn;
-      const inertiaOk = (lastResult.I_motor + J_rotor) / J_rotor <= state.sm_permitted_inertia_ratio;
-      const needsBrakeCtx = Number(state.tilt_deg) !== 0;
-      const brakeOk = !needsBrakeCtx || motor.brake;
-      status = (speedOk && torqueOk && inertiaOk && brakeOk) ? 'PASS' : 'FAIL';
-    }
-
-    // Persist back to project store
-    const servoState = JSON.parse(localStorage.getItem('servoState') || localStorage.getItem('titanServoState') || 'null');
-    if (window.Projects) {
-      // Save key result metrics so the project export can display them without re-running the calculator
-      let metrics = null;
-      if (selectedMotorIdx >= 0 && selectedMotorIdx < MOTOR_DB.length && lastResult) {
-        const m = MOTOR_DB[selectedMotorIdx];
-        const permRatioValue = toFiniteNumber(servoState?.sm_permitted_inertia_ratio);
-        const permRatio = permRatioValue && permRatioValue > 0 ? permRatioValue : 7;
-        metrics = {
-          Nmotor: Math.round(lastResult.Nmotor),
-          T_peak_motor: +lastResult.T_peak_motor.toFixed(3),
-          inertia_ratio: lastResult.inertia_ratio !== null ? +lastResult.inertia_ratio.toFixed(3) : null,
-          speedUtil:    Math.round(lastResult.Nmotor / m.Nn * 100),
-          torqueUtil:   Math.round(lastResult.T_peak_motor / m.Mn * 100),
-          inertiaUtil:  lastResult.inertia_ratio !== null
-            ? Math.round(lastResult.inertia_ratio / permRatio * 100)
-            : null,
-          motorKW: m.kW,
-          motorMn: m.Mn,
-          motorNn: m.Nn,
-        };
-      }
-      Projects.updateServo(ctx.projectId, ctx.servoId, {
-        state: servoState,
-        motorIdx: selectedMotorIdx,
-        motor: motorPN,
-        status,
-        metrics,
-      });
-      Projects.clearContext();
-    }
-
+    persistServoToProject(ctx);
+    Projects.clearContext();
     window.location.href = 'project.html?id=' + ctx.projectId;
   });
 
   banner.appendChild(label);
   banner.appendChild(saveBtn);
   document.body.insertBefore(banner, document.body.firstChild);
+}
+
+/* Writes the current motor / ball screw / gearbox / servo drive picks back into the Projects
+   store for this application, so the project card and Excel export reflect them without the
+   designer having to remember to click "Save & Return to Project" — render() calls this on every
+   render while a project context is active (cheap: same cost class as the saveState() calls that
+   already happen on every input edit), and the explicit button still calls it too before
+   navigating back. */
+function persistServoToProject(ctx) {
+  if (!ctx || !window.Projects) return;
+
+  let status = 'NO MOTOR';
+  let motorPN = null;
+  if (selectedMotorIdx >= 0 && selectedMotorIdx < MOTOR_DB.length && lastResult) {
+    const motor = MOTOR_DB[selectedMotorIdx];
+    motorPN = motor.pn;
+    const J_rotor = motor.Jmot * 1e-4;
+    const speedOk  = lastResult.Nmotor <= motor.Nn;
+    const torqueOk = lastResult.T_peak_motor <= motor.Mn;
+    const inertiaOk = (lastResult.I_motor + J_rotor) / J_rotor <= state.sm_permitted_inertia_ratio;
+    const needsBrakeCtx = Number(state.tilt_deg) !== 0;
+    const brakeOk = !needsBrakeCtx || motor.brake;
+    status = (speedOk && torqueOk && inertiaOk && brakeOk) ? 'PASS' : 'FAIL';
+  }
+
+  // Save key result metrics so the project export can display them without re-running the calculator
+  let metrics = null;
+  if (selectedMotorIdx >= 0 && selectedMotorIdx < MOTOR_DB.length && lastResult) {
+    const m = MOTOR_DB[selectedMotorIdx];
+    const permRatioValue = toFiniteNumber(state.sm_permitted_inertia_ratio);
+    const permRatio = permRatioValue && permRatioValue > 0 ? permRatioValue : 7;
+    metrics = {
+      Nmotor: Math.round(lastResult.Nmotor),
+      T_peak_motor: +lastResult.T_peak_motor.toFixed(3),
+      inertia_ratio: lastResult.inertia_ratio !== null ? +lastResult.inertia_ratio.toFixed(3) : null,
+      speedUtil:    Math.round(lastResult.Nmotor / m.Nn * 100),
+      torqueUtil:   Math.round(lastResult.T_peak_motor / m.Mn * 100),
+      inertiaUtil:  lastResult.inertia_ratio !== null
+        ? Math.round(lastResult.inertia_ratio / permRatio * 100)
+        : null,
+      motorKW: m.kW,
+      motorMn: m.Mn,
+      motorNn: m.Nn,
+    };
+  }
+  // Save the pre-selected catalog picks (ball screw / gearbox / servo drive) alongside the
+  // motor, so the project card and Excel export can show the full drivetrain without
+  // re-running the calculator for this application.
+  const ballScrew = (typeof getAppliedBallScrew === 'function') ? getAppliedBallScrew() : null;
+  const gearbox = (typeof getAppliedGearbox === 'function') ? getAppliedGearbox() : null;
+  const drive = (typeof getRecommendedDrive === 'function') ? getRecommendedDrive() : null;
+  const components = {
+    ballScrewPn: ballScrew ? ballScrew.pn : null,
+    gearboxPn: gearbox ? gearbox.pn : null,
+    drivePn: drive ? drive.pn : null,
+  };
+  Projects.updateServo(ctx.projectId, ctx.servoId, {
+    state: JSON.parse(JSON.stringify(state)),
+    motorIdx: selectedMotorIdx,
+    motor: motorPN,
+    status,
+    metrics,
+    components,
+  });
 }
 
 /* ─────────────────────────────────────────────
@@ -2591,7 +2696,7 @@ function downloadReport(result) {
     alert('PDF table plugin not loaded.');
     return;
   }
-  const motor = result.selectedMotor;
+  const motor = getCurrentMotor(result);
   const sysAcc = calculateSystemAccuracy();
   const dateStr = new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
 
@@ -2636,24 +2741,22 @@ function downloadReport(result) {
   });
   y = doc.lastAutoTable.finalY + 14;
 
-  const motorRows = motor ? [
-    ['Part number', motor.pn],
-    ['Series', motor.series],
-    ['Rated torque Mn', `${motor.Mn.toFixed(2)} Nm`],
-    ['Peak torque Mmax', `${motor.Mmax.toFixed(2)} Nm`],
-    ['Rated speed Nn', `${motor.Nn} rpm`],
-    ['Rotor inertia Jmot', `${motor.Jmot.toFixed(3)} kg·cm²`],
-    ['Holding brake', motor.brake ? 'Yes' : 'No'],
-  ] : [['Selected Motor', 'No motor selected']];
+  const componentRows = getSelectedComponentsSummary(result).map(r => [r.component, r.pn || '—', r.specs || '—', r.status]);
 
   doc.autoTable({
     startY: y,
-    head: [['Selected Motor', 'Details']],
-    body: motorRows,
+    head: [['Component', 'Part No.', 'Specification', 'Status']],
+    body: componentRows,
     theme: 'grid',
-    styles: { fontSize: 9, cellPadding: 5 },
+    styles: { fontSize: 8.5, cellPadding: 4 },
     headStyles: { fillColor: [31, 56, 100] },
     margin: { left: marginX, right: marginX },
+    columnStyles: {
+      0: { cellWidth: pageWidth * 0.16 },
+      1: { cellWidth: pageWidth * 0.20 },
+      2: { cellWidth: pageWidth * 0.42 },
+      3: { cellWidth: pageWidth * 0.14 },
+    },
   });
   y = doc.lastAutoTable.finalY + 14;
 

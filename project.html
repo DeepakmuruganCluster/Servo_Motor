@@ -92,6 +92,9 @@ header h1{font-size:18px;font-weight:800;letter-spacing:1.5px}
 
 .app-motor{font-size:12px;color:var(--sub);font-family:monospace}
 .app-motor-none{font-size:12px;color:var(--sub);font-style:italic}
+.app-components{font-size:11px;color:var(--sub);font-family:monospace;margin-top:4px;line-height:1.6}
+.app-comp-tag{display:inline-block;min-width:74px;font-weight:700;color:#9ca3af;font-family:inherit}
+.app-components-stale{font-family:inherit;font-style:italic;color:#b45309}
 .app-params{font-size:11px;color:var(--sub);line-height:1.7}
 .app-updated{font-size:11px;color:#9ca3af}
 .app-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
@@ -227,141 +230,129 @@ footer{text-align:center;font-size:11px;color:var(--sub);padding:16px;border-top
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="js/projects.js"></script>
+<!-- Real physics engine + catalog selectors (not a hand-rolled duplicate) — lets this page
+     compute motor/ball screw/gearbox/drive picks for Excel-imported and previously-saved
+     applications without requiring the designer to open the calculator. -->
+<script src="js/constants.js"></script>
+<script src="js/calculations.js"></script>
+<script src="data/thk_ballscrew_catalog.js"></script>
+<script src="data/apex_gearbox_catalog.js"></script>
+<script src="data/siemens_drive_catalog.js"></script>
+<script src="js/ballscrew-selection.js"></script>
+<script src="js/gearbox-selection.js"></script>
+<script src="js/drive-selection.js"></script>
 <script>
-/* ── Embedded motor DB + auto-select (mirrors servo-app.js) ── */
-const _MOTOR_DB = [
-  { pn:'1FK2103-2AH00-0MA0', kW:0.28,  Mn:0.60, Nn:4500, Jmot:0.093, brake:false },
-  { pn:'1FK2103-2AH10-0MA0', kW:0.28,  Mn:0.60, Nn:4500, Jmot:0.093, brake:true  },
-  { pn:'1FK2103-4AH00-0MA0', kW:0.48,  Mn:1.27, Nn:4500, Jmot:0.14,  brake:false },
-  { pn:'1FK2103-4AH10-0MA0', kW:0.48,  Mn:1.27, Nn:4500, Jmot:0.14,  brake:true  },
-  { pn:'1FK2104-4AF00-0MA0', kW:0.40,  Mn:1.27, Nn:3000, Jmot:0.35,  brake:false },
-  { pn:'1FK2104-4AF10-0MA0', kW:0.40,  Mn:1.27, Nn:3000, Jmot:0.35,  brake:true  },
-  { pn:'1FK2104-4AK00-0MA0', kW:0.60,  Mn:0.90, Nn:6000, Jmot:0.35,  brake:false },
-  { pn:'1FK2104-4AK10-0MA0', kW:0.60,  Mn:0.90, Nn:6000, Jmot:0.35,  brake:true  },
-  { pn:'1FK2104-5AF00-0MA0', kW:0.75,  Mn:2.40, Nn:3000, Jmot:0.56,  brake:false },
-  { pn:'1FK2104-5AF10-0MA0', kW:0.75,  Mn:2.40, Nn:3000, Jmot:0.56,  brake:true  },
-  { pn:'1FK2104-5AK00-0MA0', kW:0.107, Mn:1.50, Nn:6000, Jmot:0.56,  brake:false },
-  { pn:'1FK2104-5AK10-0MA0', kW:0.107, Mn:1.50, Nn:6000, Jmot:0.56,  brake:true  },
-  { pn:'1FK2104-6AF00-0MA0', kW:1.00,  Mn:3.20, Nn:3000, Jmot:0.76,  brake:false },
-  { pn:'1FK2104-6AF10-0MA0', kW:1.00,  Mn:3.20, Nn:3000, Jmot:0.76,  brake:true  },
-];
-const G = 9.81;
+/* Shared globals expected by calculations.js / ballscrew-selection.js / gearbox-selection.js /
+   drive-selection.js (normally declared by js/servo-app.js, which this page doesn't load — it
+   has DOM/init side effects specific to calculator.html). Bare-identifier access across separate
+   classic <script> tags works because let/const at top level share one global lexical scope for
+   the whole document — the modules loaded above only ever READ these at call time, well after
+   this declaration has run. */
+let state = {};
+let selectedMotorIdx = -1;
+let lastResult = null;
 
-function getStepTimings(step, st = DEFAULT_STATE) {
-  const avail = Math.max(Number(step?.move_time) || 0, 0.01);
-  const accPct = Math.min(80, Math.max(1, Number(st.acc_pct) || 25)) / 100;
-  const fallbackAcc = Math.min(avail / 2, avail * accPct);
-  const rawAcc = Number(step?.acceleration_time);
-  const rawDec = Number(step?.deceleration_time);
-  const t_acc = Number.isFinite(rawAcc) && rawAcc > 0 ? Math.min(rawAcc, avail) : fallbackAcc;
-  const t_dec = Number.isFinite(rawDec) && rawDec > 0 ? Math.min(rawDec, avail) : t_acc;
-  const t_const = Math.max(0, avail - t_acc - t_dec);
-  return { avail, t_acc, t_dec, t_const };
+/* Runs the real physics engine (constants.js + calculations.js) against a saved application's
+   state and returns the best-fit motor, in the same shape the old hand-rolled duplicate used —
+   so every existing call site below keeps working unchanged. Used for both Excel-import preview
+   and populating the project card for previously-saved applications. */
+/* Mirrors js/servo-app.js's restoreState(): the project-level "Configure" settings are
+   authoritative for which hardware is on the axis (e.g. "Gearbox: Yes" set once for the whole
+   project) and must override whatever an individual application's saved/imported state says —
+   otherwise an Excel row that didn't specify a gearbox column would never get one even though
+   the project as a whole calls for it. */
+function applyProjectConfigOverride(projectId) {
+  const cfg = (typeof Projects !== 'undefined' && projectId) ? (Projects.get(projectId)?.config || null) : null;
+  if (!cfg) return;
+  if (cfg.bs_type)          state.bs_type          = cfg.bs_type;
+  if (cfg.has_gearbox)      state.has_gearbox      = 1;
+  if (cfg.has_parallel_kit) state.has_parallel_kit = 1;
+  if (cfg.has_lm_guide !== undefined) state.has_lm_guide = cfg.has_lm_guide ? 1 : 1;
+  if (cfg.counterbalance === 'none') {
+    state.has_counterbalance = 0;
+  } else if (cfg.counterbalance === 'guide_shaft' || cfg.counterbalance === 'pulley') {
+    state.has_counterbalance = cfg.counterbalance;
+  }
 }
 
-function getPeakLinearSpeed(step, st = DEFAULT_STATE) {
-  const { avail, t_acc, t_dec } = getStepTimings(step, st);
-  const span = avail - 0.5 * (t_acc + t_dec);
-  return span > 0 ? (Number(step?.stroke) || 0) / span : 0;
-}
-
-function autoSelectMotor(st) {
-  /* Compact replication of calculateStepGroup + suggestBestMotor from servo-app.js */
-  const eff_ratio = (st.pk_ratio || 1) * (st.gb_ratio || 1);
-  const eff_eff   = (st.bs_efficiency || 0.98) * (eff_ratio > 1 ? (st.gb_efficiency || 0.97) : 1);
-  const pitch_m   = (st.bs_pitch || 5) / 1000;
-  const perm_ir   = st.sm_permitted_inertia_ratio || 7;
-  const steps     = st.steps || [];
-  const bearingDrag = (() => {
-    const fixed = (st.bs_n_fixed_blocks || 0) * (st.bs_fixed_drag_axial || 0);
-    const support = (st.bs_n_support_blocks || 0) * (st.bs_support_drag_axial || 0);
-    return fixed + support;
-  })();
-
-  let Nmotor = 0, T_peak_motor = 0, I_motor = 0;
-
-  steps.forEach(step => {
-    const { avail, t_acc, t_dec } = getStepTimings(step, st);
-    const Vmax   = getPeakLinearSpeed(step, st) / 1000;
-    const Nsc    = pitch_m > 0 ? Vmax * 1000 / (st.bs_pitch || 5) * 60 : 0;
-    const Nm     = Nsc * eff_ratio;
-
-    const theta        = ((step.tilt_deg || 0) * Math.PI) / 180;
-    const n_blocks     = st.guide_n_blocks || 1;
-    const mass         = (step.load_mass || 0) + (st.guide_mass || 0)
-                       + (st.bs_nut_mass || 0)
-                       + n_blocks * (st.guide_block_mass || 0);
-
-    const grav_sign    = step.movement_dir === 'with_gravity' ? -1 : 1;
-    const ext_sign     = step.external_force_dir === 'aiding' ? -1 : 1;
-    const F_grav       = grav_sign * mass * G * Math.sin(theta);
-    const F_pl         = mass * G * (st.mu || 0.03) * Math.cos(theta);
-    const F_cb_fr      = (st.cb_n_bushings || 0) * (st.cb_bushing_friction_force || 0);
-    let F_cb           = 0;
-    if (Number(st.has_counterbalance)) {
-      const th_cb = ((st.cb_angle_deg || 90) * Math.PI) / 180;
-      F_cb = -grav_sign * (st.cb_mass || 0) * G * (Math.sin(th_cb) + (st.cb_mu || 0) * Math.cos(th_cb));
-    }
-    const Fax          = ext_sign * (step.external_force || 0)
-                         + F_grav
-                         + F_pl + n_blocks * (st.guide_force || 0) + F_cb_fr
-                         + F_cb;
-    // Signed axial torque per sign matrix — no Math.abs (gravity-aided can be negative)
-    const T_axial      = pitch_m > 0 ? (Fax * pitch_m) / (2 * Math.PI * (st.bs_efficiency || 0.98)) : 0;
-    const T_preload    = st.bs_preload_torque || 0;
-    const T_bs_load    = T_axial + T_preload + (st.bs_bearing_drag_torque || bearingDrag || 0) + (st.pk_no_load_torque || 0);
-
-    // Jrm from geometry
-    const BS_DENS = { steel: 7870, stainless: 7930, aluminum: 2700 };
-    const Jrm_p = (Math.PI / 32) * (BS_DENS[st.bs_material] || 7870) * ((st.bs_length || 500) / 1000) * Math.pow((st.bs_dia || 6) / 1000, 4);
-    const J_ref  = (mass * Math.pow(pitch_m / (2 * Math.PI), 2))
-                   + Jrm_p + (st.pk_inertia || 0) + (st.gb_inertia || 0);
-    // T = J × N / (9.55 × t)  — divide by time (angular deceleration)
-    const T_acc  = t_acc > 0 ? J_ref * Nsc / (9.55 * t_acc) : 0;
-    const T_dec  = t_dec > 0 ? J_ref * Nsc / (9.55 * t_dec) : 0;
-    const SF_p              = 1 + (st.safety_factor || 20) / 100;
-    const T_total_accel_p   = T_bs_load + T_acc;
-    const T_total_decel_p   = T_bs_load - T_dec;
-    const T_pbs  = Math.max(Math.abs(T_total_accel_p), Math.abs(T_total_decel_p)) * SF_p;
-    const T_pm   = eff_ratio > 0 ? T_pbs / (eff_ratio * eff_eff) + (st.gb_no_load_torque || 0) : 0;
-    const Im     = eff_ratio > 0 ? J_ref / Math.pow(eff_ratio, 2) : 0;
-
-    Nmotor       = Math.max(Nmotor, Nm);
-    T_peak_motor = Math.max(T_peak_motor, T_pm);
-    I_motor      = Math.max(I_motor, Im);
-  });
-
-  const needsBrake = steps.some(s => Number(s.tilt_deg || 0) !== 0);
-
-  const scored = _MOTOR_DB.map((m, idx) => {
-    const Jr = m.Jmot * 1e-4;
-    const sU = Nmotor / m.Nn;
-    const tU = T_peak_motor / m.Mn;
-    const iU = (I_motor + Jr) / Jr / perm_ir;
-    const ok = sU <= 1 && tU <= 1 && iU <= 1 && (!needsBrake || m.brake);
-    return { m, idx, ok, score: m.kW * 1000 + sU + tU + iU, sU, tU, iU };
-  });
-
-  const pass = scored.filter(r => r.ok).sort((a, b) => a.score - b.score);
-  const best = pass[0] || null;
-  if (!best) return null;
-
+function autoSelectMotor(st, projectId) {
+  state = Object.assign({}, DEFAULT_STATE, st);
+  applyProjectConfigOverride(projectId);
+  selectedMotorIdx = -1;
+  normalizeState();
+  let result = calculate();
+  const best = suggestBestMotor(result);
+  if (!best || !best.viable) { lastResult = result; return null; }
+  // calculate() computes inertia_ratio only against a SELECTED motor (null otherwise) — recompute
+  // now that suggestBestMotor has picked one, or metrics.inertia_ratio/inertiaUtil come back null.
+  selectedMotorIdx = best.index;
+  result = calculate();
+  lastResult = result;
+  const m = best.motor;
   return {
-    motorIdx: best.idx,
-    motor: best.m.pn,
+    motorIdx: best.index,
+    motor: m.pn,
     status: 'PASS',
     metrics: {
-      Nmotor: Math.round(Nmotor),
-      T_peak_motor: +T_peak_motor.toFixed(3),
-      inertia_ratio: +((I_motor + best.m.Jmot * 1e-4) / (best.m.Jmot * 1e-4)).toFixed(3),
-      speedUtil:   Math.round(best.sU * 100),
-      torqueUtil:  Math.round(best.tU * 100),
-      inertiaUtil: Math.round(best.iU * 100),
-      motorKW: best.m.kW,
-      motorMn: best.m.Mn,
-      motorNn: best.m.Nn,
+      Nmotor: Math.round(result.Nmotor),
+      T_peak_motor: +result.T_peak_motor.toFixed(3),
+      inertia_ratio: result.inertia_ratio !== null ? +result.inertia_ratio.toFixed(3) : null,
+      speedUtil:    Math.round(result.Nmotor / m.Nn * 100),
+      torqueUtil:   Math.round(result.T_peak_motor / m.Mn * 100),
+      inertiaUtil:  result.inertia_ratio !== null
+        ? Math.round(result.inertia_ratio / state.sm_permitted_inertia_ratio * 100)
+        : null,
+      motorKW: m.kW,
+      motorMn: m.Mn,
+      motorNn: m.Nn,
     },
   };
+}
+
+/* Runs the THK / Apex / Siemens catalog selectors for a saved application, given the motor
+   already resolved by autoSelectMotor — mirrors js/servo-app.js's own render()-time auto-sync,
+   but read-only (returns part numbers for display; never writes back into the app's own state
+   fields, since there's no calculator UI here to reflect that into).
+   Prefers whatever is actually APPLIED in state (bs_pitch/bs_dia, gb_ratio/gb_backlash,
+   sd_applied_pn) over the algorithmic top-ranked recommendation — same priority order as the
+   calculator's own getAppliedBallScrew()/getAppliedGearbox()/getRecommendedDrive(). Without this,
+   a designer who deliberately picks a non-top-ranked part in the calculator (e.g. for inventory
+   reasons) would see their choice silently replaced by the #1-ranked part on the project card. */
+function selectComponentsFor(st, motorIdx, projectId) {
+  state = Object.assign({}, DEFAULT_STATE, st);
+  applyProjectConfigOverride(projectId);
+  selectedMotorIdx = (motorIdx != null && motorIdx >= 0 && motorIdx < MOTOR_DB.length) ? motorIdx : -1;
+  normalizeState();
+  const result = calculate();
+  lastResult = result;
+
+  function pickApplied(recommended, matchFn) {
+    if (!recommended || !recommended.length) return null;
+    return recommended.find(matchFn) || recommended[0];
+  }
+
+  let ballScrewPn = null, gearboxPn = null, drivePn = null;
+  try {
+    const bsOut = selectBallScrew({ baseResult: result });
+    const bsPicked = pickApplied(bsOut.recommended, c =>
+      Math.abs(Number(state.bs_pitch) - c.lead) < 1e-6 && Math.abs(Number(state.bs_dia) - c.dia) < 1e-6);
+    ballScrewPn = bsPicked ? bsPicked.pn : null;
+  } catch (e) { console.warn('selectComponentsFor: ball screw failed', e); }
+  try {
+    if (Number(state.has_gearbox) !== 0) {
+      const gbOut = selectGearbox({ baseResult: result });
+      const gbPicked = pickApplied(gbOut.recommended, c =>
+        Math.abs(Number(state.gb_ratio) - c.ratio) < 1e-6 && String(state.gb_backlash) === String(c.backlash_arcmin));
+      gearboxPn = gbPicked ? gbPicked.pn : null;
+    }
+  } catch (e) { console.warn('selectComponentsFor: gearbox failed', e); }
+  try {
+    const sdOut = selectDrive({ baseResult: result });
+    const sdPicked = pickApplied(sdOut.recommended, c => !!state.sd_applied_pn && c.pn === state.sd_applied_pn);
+    drivePn = sdPicked ? sdPicked.pn : null;
+  } catch (e) { console.warn('selectComponentsFor: drive failed', e); }
+
+  return { ballScrewPn, gearboxPn, drivePn };
 }
 </script>
 <script>
@@ -449,6 +440,20 @@ function autoSelectMotor(st) {
              N:${mx.speedUtil}% &nbsp;T:${mx.torqueUtil}% &nbsp;J:${mx.inertiaUtil}%
            </div>`
         : '';
+      const comp = app.components;
+      const compRows = comp ? [
+        comp.ballScrewPn ? ['Ball Screw', comp.ballScrewPn] : null,
+        comp.gearboxPn   ? ['Gearbox', comp.gearboxPn]      : null,
+        comp.drivePn     ? ['Servo Drive', comp.drivePn]    : null,
+      ].filter(Boolean) : [];
+      const componentsHtml = compRows.length
+        ? `<div class="app-components">${compRows.map(([label, pn]) =>
+            `<div><span class="app-comp-tag">${label}</span> ${escHtml(pn)}</div>`).join('')}</div>`
+        // app.motor set but app.components missing = saved before ball screw / gearbox / drive
+        // picks were persisted (older application) — reopening and saving refreshes it.
+        // Computed automatically on every project.html load (backfillMotorSelections) — this
+        // only shows if no catalog part actually satisfies the saved requirements.
+        : (app.motor ? `<div class="app-components app-components-stale">No matching ball screw / gearbox / drive found in the catalog for this application's requirements</div>` : '');
 
       return `
       <div class="app-card" data-idx="${idx}">
@@ -462,6 +467,7 @@ function autoSelectMotor(st) {
           ${app.motor
             ? `<div class="app-motor">${escHtml(app.motor)}</div>${utilHtml}`
             : `<div class="app-motor-none">No motor selected yet</div>`}
+          ${componentsHtml}
           <div class="app-updated">Last edited ${fmtDate(app.lastUpdated)}</div>
         </div>
         <div class="app-actions">
@@ -922,7 +928,9 @@ function autoSelectMotor(st) {
             const appName = [stnState.stnNo, stnState.applStr].filter(Boolean).join(' ') ||
                             (isNewFormat ? String(headerRow[colIdx] || '').trim() : '') ||
                             'Application 1';
-            motorState.steps[0].label = appName;
+            // appName names the application/servo itself (Projects.addServo below) — it must
+            // not also overwrite steps[0].label, or the calculator's motion step card shows the
+            // application name ("OP20 App-2") instead of "Step 1".
             motorState.project_stn  = stnState.stnNo  || '';
             motorState.project_appl = stnState.applStr || '';
             return { motorState, stnState, appName };
@@ -931,24 +939,25 @@ function autoSelectMotor(st) {
           let added = 0, updated = 0;
           stationColIndices.forEach(colIdx => {
             const { motorState, stnState, appName } = parseOneStation(colIdx);
-            const autoResult = autoSelectMotor(motorState);
+            const autoResult = autoSelectMotor(motorState, projectId);
             const motorPN     = stnState.motorName || (autoResult ? autoResult.motor   : null);
             const motorIdx    = autoResult ? autoResult.motorIdx : -1;
             const motorStatus = autoResult ? autoResult.status   : 'NEW';
             const motorMeta   = autoResult ? autoResult.metrics  : null;
+            const components  = selectComponentsFor(motorState, motorIdx, projectId);
 
             const existing = Projects.get(projectId)?.servos.find(s => s.name === appName);
             if (existing) {
               Projects.updateServo(projectId, existing.id, {
                 state: motorState, motor: motorPN, motorIdx,
-                status: motorStatus, metrics: motorMeta,
+                status: motorStatus, metrics: motorMeta, components,
               });
               updated++;
             } else {
               const sid = Projects.addServo(projectId, appName);
               Projects.updateServo(projectId, sid, {
                 state: motorState, motor: motorPN, motorIdx,
-                status: motorStatus, metrics: motorMeta,
+                status: motorStatus, metrics: motorMeta, components,
               });
               added++;
             }
@@ -1105,30 +1114,33 @@ function autoSelectMotor(st) {
           const appName = [stnNo, applStr].filter(Boolean).join(' ');
           if (!appName) continue; // skip rows with no station/application
 
-          motorState.steps[0].label = appName;
+          // appName names the application/servo itself (Projects.addServo below) — it must not
+          // also overwrite steps[0].label, or the calculator's motion step card shows the
+          // application name ("OP20 App-2") instead of "Step 1".
           motorState.project_stn  = stnNo   || '';
           motorState.project_appl = applStr || '';
 
           // Auto-select best motor from state
-          const autoResult = autoSelectMotor(motorState);
+          const autoResult = autoSelectMotor(motorState, projectId);
           const motorPN     = motorName || (autoResult ? autoResult.motor   : null);
           const motorIdx    = autoResult ? autoResult.motorIdx : -1;
           const motorStatus = autoResult ? autoResult.status   : 'NEW';
           const motorMeta   = autoResult ? autoResult.metrics  : null;
+          const components  = selectComponentsFor(motorState, motorIdx, projectId);
 
           // Add or update application in project
           const existing = Projects.get(projectId)?.servos.find(s => s.name === appName);
           if (existing) {
             Projects.updateServo(projectId, existing.id, {
               state: motorState, motor: motorPN, motorIdx,
-              status: motorStatus, metrics: motorMeta,
+              status: motorStatus, metrics: motorMeta, components,
             });
             updated++;
           } else {
             const sid = Projects.addServo(projectId, appName);
             Projects.updateServo(projectId, sid, {
               state: motorState, motor: motorPN, motorIdx,
-              status: motorStatus, metrics: motorMeta,
+              status: motorStatus, metrics: motorMeta, components,
             });
             added++;
           }
@@ -1395,7 +1407,7 @@ function autoSelectMotor(st) {
     const sid = Projects.addServo(projectId, name);
     if (sid) {
       // Auto-select motor from default state before launching
-      const autoResult = autoSelectMotor(DEFAULT_STATE);
+      const autoResult = autoSelectMotor(DEFAULT_STATE, projectId);
       if (autoResult) {
         Projects.updateServo(projectId, sid, {
           state: DEFAULT_STATE,
@@ -1403,6 +1415,7 @@ function autoSelectMotor(st) {
           motorIdx: autoResult.motorIdx,
           status: autoResult.status,
           metrics: autoResult.metrics,
+          components: selectComponentsFor(DEFAULT_STATE, autoResult.motorIdx, projectId),
         });
       }
       Projects.launchServo(projectId, sid);
@@ -1431,6 +1444,7 @@ function autoSelectMotor(st) {
       'Application', 'Status', 'Selected Motor',
       'Speed req. (rpm)', 'Torque req. (Nm)', 'Inertia Ratio',
       'Speed util %', 'Torque util %', 'Inertia util %',
+      'Ball Screw', 'Gearbox', 'Servo Drive',
       'Stroke (mm)', 'Move time (s)', 'BS Pitch (mm)',
       'PK Ratio', 'GB Ratio', 'Brake needed',
     ]);
@@ -1439,6 +1453,7 @@ function autoSelectMotor(st) {
       const s = servo.state || {};
       const step = (s.steps && s.steps[0]) || {};
       const mx = servo.metrics || {};
+      const comp = servo.components || {};
 
       aoa.push([
         servo.name,
@@ -1450,6 +1465,9 @@ function autoSelectMotor(st) {
         mx.speedUtil != null ? mx.speedUtil + '%' : '',
         mx.torqueUtil != null ? mx.torqueUtil + '%' : '',
         mx.inertiaUtil != null ? mx.inertiaUtil + '%' : '',
+        comp.ballScrewPn || '',
+        comp.gearboxPn || '',
+        comp.drivePn || '',
         step.stroke || '',
         step.move_time || '',
         s.bs_pitch || '',
@@ -1461,7 +1479,7 @@ function autoSelectMotor(st) {
 
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     // Column widths
-    ws['!cols'] = [24,10,30,16,16,14,12,12,12,12,12,12,10,10,14].map(w => ({ wch: w }));
+    ws['!cols'] = [24,10,30,16,16,14,12,12,12,24,24,24,12,12,12,10,10,14].map(w => ({ wch: w }));
 
     // Bold the header row (find it: first row with 'Application' in col A)
     const hdrRowIdx = aoa.findIndex(r => r[0] === 'Application');
@@ -1501,57 +1519,82 @@ function autoSelectMotor(st) {
     p.servos.forEach(servo => {
       if (!servo.state) return;
 
-      // Always recompute fresh metrics from current state
-      const result = autoSelectMotor(servo.state);
+      // Fold the project-level Configure overrides (has_gearbox etc.) into the application's OWN
+      // saved state, not just applied transiently for this computation. Without this, the
+      // confidence score / component list would visibly change the moment the designer opens
+      // this application in the calculator (which DOES persist the override into servo.state via
+      // its own render()), even though nothing was actually edited — the "before opening" and
+      // "after opening" views of the same unmodified application must agree.
+      const overriddenState = Object.assign({}, servo.state);
+      state = Object.assign({}, DEFAULT_STATE, overriddenState);
+      applyProjectConfigOverride(projectId);
+      ['bs_type', 'has_gearbox', 'has_parallel_kit', 'has_lm_guide', 'has_counterbalance'].forEach(k => {
+        overriddenState[k] = state[k];
+      });
+      const stateChanged = JSON.stringify(overriddenState) !== JSON.stringify(servo.state);
 
-      // Determine which motor to keep
-      let motorPN   = servo.motor;
-      let motorIdx  = servo.motorIdx >= 0 ? servo.motorIdx : -1;
-      let motorMeta = result ? result.metrics : null;
-      let status    = servo.status;
-
-      if (motorIdx >= 0) {
-        // Check if stored motor is still viable with current state
-        const m = _MOTOR_DB[motorIdx];
-        if (m && result) {
-          const Jr = m.Jmot * 1e-4;
-          const im = result.metrics;
-          const Nmotor = im ? im.Nmotor : 0;
-          const Tpeak  = im ? im.T_peak_motor : 0;
-          const Ir     = im ? im.inertia_ratio : 0;
-          const permIr = (servo.state.sm_permitted_inertia_ratio || 7);
-          const needsBrake = (servo.state.steps || []).some(s => Number(s.tilt_deg || 0) !== 0);
-          const viable = Nmotor <= m.Nn && Tpeak <= m.Mn && Ir <= permIr && (!needsBrake || m.brake);
-          if (!viable && result) {
-            // Stored motor is invalid — switch to best available
-            motorPN  = result.motor;
-            motorIdx = result.motorIdx;
-            status   = result.status;
-          }
-        }
-        // Refresh metrics with correct utilization against the kept motor
-        if (motorMeta && motorIdx >= 0) {
-          const m2 = _MOTOR_DB[motorIdx];
-          if (m2) {
-            motorMeta = Object.assign({}, motorMeta, {
-              speedUtil:   Math.round((motorMeta.Nmotor || 0) / m2.Nn * 100),
-              torqueUtil:  Math.round((motorMeta.T_peak_motor || 0) / m2.Mn * 100),
-              inertiaUtil: Math.round((motorMeta.inertia_ratio || 0) / (servo.state.sm_permitted_inertia_ratio || 7) * 100),
-              motorKW: m2.kW, motorMn: m2.Mn, motorNn: m2.Nn,
-            });
-          }
-        }
-      } else if (result) {
-        // No motor stored — auto-select
-        motorPN  = result.motor;
-        motorIdx = result.motorIdx;
-        status   = result.status;
+      // Determine which motor to keep. A stored motor (manually picked in the calculator, or
+      // previously auto-selected) is NEVER silently swapped for a "better" one here — that would
+      // discard a deliberate designer choice (e.g. picked for inventory reasons) without them
+      // ever touching this application again. Instead, metrics/status are recomputed fresh
+      // against whatever motor is actually stored, exactly like the calculator's own
+      // persistServoToProject() does (an inadequate manual pick shows FAIL, it isn't replaced).
+      // Only a genuinely unset motor (motorIdx < 0, e.g. a brand-new application) gets
+      // auto-selected.
+      let motorPN, motorIdx, motorMeta, status;
+      if (servo.motorIdx >= 0 && servo.motorIdx < MOTOR_DB.length) {
+        motorIdx = servo.motorIdx;
+        motorPN = servo.motor;
+        state = Object.assign({}, DEFAULT_STATE, overriddenState);
+        applyProjectConfigOverride(projectId);
+        selectedMotorIdx = motorIdx;
+        normalizeState();
+        const result = calculate();
+        lastResult = result;
+        const m = MOTOR_DB[motorIdx];
+        const speedOk    = result.Nmotor <= m.Nn;
+        const torqueOk   = result.T_peak_motor <= m.Mn;
+        const inertiaOk  = result.inertia_ratio !== null ? result.inertia_ratio <= state.sm_permitted_inertia_ratio : true;
+        // Matches calculate()/persistServoToProject()'s own brake-need convention exactly:
+        // state.tilt_deg is the CANONICAL top-level field normalizeState() synthesizes from
+        // steps[0].tilt_deg (not a scan across every step) — using a different rule here would
+        // let this computation disagree with the calculator's own PASS/FAIL verdict for the same
+        // unmodified application, which is exactly the instability this must not have.
+        const needsBrake = Number(state.tilt_deg) !== 0;
+        const brakeOk    = !needsBrake || m.brake;
+        status = (speedOk && torqueOk && inertiaOk && brakeOk) ? 'PASS' : 'FAIL';
+        motorMeta = {
+          Nmotor: Math.round(result.Nmotor),
+          T_peak_motor: +result.T_peak_motor.toFixed(3),
+          inertia_ratio: result.inertia_ratio !== null ? +result.inertia_ratio.toFixed(3) : null,
+          speedUtil:    Math.round(result.Nmotor / m.Nn * 100),
+          torqueUtil:   Math.round(result.T_peak_motor / m.Mn * 100),
+          inertiaUtil:  result.inertia_ratio !== null
+            ? Math.round(result.inertia_ratio / state.sm_permitted_inertia_ratio * 100)
+            : null,
+          motorKW: m.kW, motorMn: m.Mn, motorNn: m.Nn,
+        };
+      } else {
+        // No motor stored — auto-select the best fit
+        const result = autoSelectMotor(overriddenState, projectId);
+        motorPN   = result ? result.motor : null;
+        motorIdx  = result ? result.motorIdx : -1;
+        motorMeta = result ? result.metrics : null;
+        status    = result ? result.status : 'NO MOTOR';
       }
 
-      if (!servo.metrics || JSON.stringify(servo.metrics) !== JSON.stringify(motorMeta)
-          || servo.motor !== motorPN || servo.motorIdx !== motorIdx) {
+      // Ball screw / gearbox / servo drive picks — computed the same way the calculator's own
+      // auto-sync does, but read-only (no state to write back to here). Always recomputed fresh
+      // (same as motor metrics above), not just when missing — the project-level Configure
+      // settings (e.g. "Gearbox: Yes") can change independently of this application's own saved
+      // state, so a cached "no gearbox" result can go stale without motorIdx changing.
+      const components = selectComponentsFor(overriddenState, motorIdx, projectId);
+      const componentsChanged = JSON.stringify(servo.components || {}) !== JSON.stringify(components);
+
+      if (stateChanged || !servo.metrics || JSON.stringify(servo.metrics) !== JSON.stringify(motorMeta)
+          || servo.motor !== motorPN || servo.motorIdx !== motorIdx || componentsChanged) {
         Projects.updateServo(projectId, servo.id, {
-          motor: motorPN, motorIdx, status, metrics: motorMeta,
+          state: overriddenState, motor: motorPN, motorIdx, status, metrics: motorMeta, components,
         });
         changed = true;
       }

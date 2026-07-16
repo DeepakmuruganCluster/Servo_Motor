@@ -143,7 +143,20 @@ function normalizeState() {
   state.gb_no_load_torque = Math.max(0, Number(state.gb_no_load_torque) || 0);
   state.gb_inertia        = Math.max(0, Number(state.gb_inertia) || 0);
   state.gb_backlash       = Math.max(0, Number(state.gb_backlash) || 0);
+  // These are auto-synced from the top catalog gearbox pick every render() (js/servo-app.js).
+  // When has_gearbox is on but no catalog gearbox satisfies the requirements (e.g. an accuracy
+  // target too tight for any Apex model), or for a project saved before that auto-sync existed,
+  // they'd otherwise sit at a stale/missing 0 and the Verification Checklist would show #DIV/0!
+  // for a mandatory row — so, like sm_permitted_inertia_ratio below, they get a floor instead of
+  // being left clampable to 0.
+  state.gb_rated_input_speed   = Number(state.gb_rated_input_speed) > 0 ? Number(state.gb_rated_input_speed) : 6000;
+  state.gb_rated_output_torque = Number(state.gb_rated_output_torque) > 0 ? Number(state.gb_rated_output_torque) : 50;
   state.safety_factor     = Math.max(0, Number(state.safety_factor) || 0);
+  // sm_permitted_inertia_ratio has no UI field (Excel-import-only) and is divided into directly
+  // in a dozen places with no #DIV/0! guard anywhere — unlike the wish-list fields above, 0 here
+  // would silently render as "Infinity%"/"NaN%" instead of a readable message, so it gets a hard
+  // floor like the ratio/efficiency fields instead of being left clampable to 0.
+  state.sm_permitted_inertia_ratio = Math.max(0.1, Number(state.sm_permitted_inertia_ratio) || 7);
 }
 
 function estimateTorqueRMS(T_load, T_peak, t_acc, t_const, t_dec) {

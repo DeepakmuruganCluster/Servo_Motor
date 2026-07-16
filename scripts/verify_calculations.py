@@ -144,48 +144,70 @@ row('Guide block mass×n',   'ml × n_blocks',            n_guide_blocks * guide
 row('Total moving mass',    'mp+mc+mn+ml×n',            total_mass,          'kg')
 
 sep('AXIAL FORCE COMPONENTS  (Load Torque sheet)')
+# The app computes TWO axial force variants — one for the acceleration-phase sub-move and one
+# for the deceleration-phase sub-move — because gravity/external-force direction relative to
+# motion reverses between them (same convention THK's own worked examples use for Fa1..Fa6).
+# Only friction (Fpl, Fguide, Fcb-bushing) is phase-independent.
 theta        = tilt_deg * math.pi / 180
-gravity_sign = -1 if movement_dir == 'with_gravity' else 1
-ext_sign     = -1 if ext_force_dir == 'aiding' else 1
 
-F_gravity    = gravity_sign * total_mass * G * math.sin(theta)
-F_external   = ext_sign * ext_force_N
+gravity_sign_accel = -1 if movement_dir == 'with_gravity' else 1
+gravity_sign_decel =  1 if movement_dir == 'with_gravity' else -1
+ext_sign_accel      = -1 if ext_force_dir == 'aiding' else 1
+ext_sign_decel      =  1 if ext_force_dir == 'aiding' else -1
+
+F_gravity        = gravity_sign_accel * total_mass * G * math.sin(theta)
+F_gravity_decel  = gravity_sign_decel * total_mass * G * math.sin(theta)
+F_external       = ext_sign_accel * ext_force_N
+F_external_decel = ext_sign_decel * ext_force_N
+
 F_pl         = total_mass * G * mu * math.cos(theta)       # normal-force preload friction
 F_ffp        = n_guide_blocks * guide_friction_N            # LM guide friction (total)
 F_cb_bushing = cb_n_bushings * cb_bushing_friction_N
-F_friction   = F_pl + F_ffp + F_cb_bushing
+F_friction   = F_pl + F_ffp + F_cb_bushing                  # same both phases
 
-F_counterbalance = 0.0
+F_counterbalance       = 0.0
+F_counterbalance_decel = 0.0
 if has_counterbalance:
-    theta_cb         = cb_angle_deg * math.pi / 180
-    F_cb_raw         = cb_mass_kg * G * (math.sin(theta_cb) + cb_mu * math.cos(theta_cb))
-    F_counterbalance = -gravity_sign * F_cb_raw
+    theta_cb   = cb_angle_deg * math.pi / 180
+    F_cb_raw   = cb_mass_kg * G * (math.sin(theta_cb) + cb_mu * math.cos(theta_cb))
+    cb_sign_accel = 1 if movement_dir == 'with_gravity' else -1
+    cb_sign_decel = -1 if movement_dir == 'with_gravity' else 1
+    F_counterbalance       = cb_sign_accel * F_cb_raw
+    F_counterbalance_decel = cb_sign_decel * F_cb_raw
 
-axial_force  = F_external + F_gravity + F_friction + F_counterbalance
+axial_force       = F_external       + F_gravity       + F_friction + F_counterbalance
+axial_force_decel = F_external_decel + F_gravity_decel + F_friction + F_counterbalance_decel
 
 row('θ (inclination)',       'tilt_deg → radians',      theta,          'rad')
-row('Gravity sign',          '-1 with gravity, +1 against', gravity_sign)
-row('F_gravity',             '±m·g·sin(θ)',             F_gravity,      'N')
-row('F_external',            '±F_ext',                  F_external,     'N')
+row('F_gravity (accel)',     '±m·g·sin(θ)',             F_gravity,      'N')
+row('F_gravity (decel)',     '±m·g·sin(θ), flipped',    F_gravity_decel,'N')
+row('F_external (accel)',    '±F_ext',                  F_external,     'N')
+row('F_external (decel)',    '±F_ext, flipped',         F_external_decel,'N')
 row('F_preload friction',    'm·g·μ·cos(θ)',            F_pl,           'N')
 row('F_guide friction',      'n_blocks × F_per_block',  F_ffp,          'N')
 row('F_CB bushing friction', 'n_bush × F_per_bush',     F_cb_bushing,   'N')
 row('F_friction total',      'Fpl + Ffp + Fcb_bush',    F_friction,     'N')
-row('F_counterbalance',      '±(Mcb·g·(sinθcb+μcb·cosθcb))', F_counterbalance, 'N')
-row('AXIAL FORCE total',     'Fext+Fg+Ffric+Fcb',       axial_force,    'N')
+row('F_counterbalance (accel)', '±(Mcb·g·(sinθcb+μcb·cosθcb))', F_counterbalance, 'N')
+row('F_counterbalance (decel)', 'flipped',              F_counterbalance_decel, 'N')
+row('AXIAL FORCE (accel)',   'Fext+Fg+Ffric+Fcb',       axial_force,    'N')
+row('AXIAL FORCE (decel)',   'Fext+Fg+Ffric+Fcb, flipped', axial_force_decel, 'N')
 
 sep('LOAD TORQUE @ BALLSCREW SHAFT  (Load Torque sheet)')
 bs_bearing_drag = (bs_n_fixed_blocks   * bs_fixed_drag_axial_Nm +
                    bs_n_support_blocks * bs_support_drag_axial_Nm +
                    bs_bearing_drag_Nm)
-T_axial  = (axial_force * pitch_m) / (2 * math.pi * bs_efficiency) if pitch_m > 0 else 0
-T_bs_load = T_axial + bs_preload_torque_Nm + bs_bearing_drag + pk_no_load
+T_axial        = (axial_force       * pitch_m) / (2 * math.pi * bs_efficiency) if pitch_m > 0 else 0
+T_axial_decel  = (axial_force_decel * pitch_m) / (2 * math.pi * bs_efficiency) if pitch_m > 0 else 0
+T_bs_load       = T_axial       + bs_preload_torque_Nm + bs_bearing_drag + pk_no_load
+T_bs_load_decel = T_axial_decel + bs_preload_torque_Nm + bs_bearing_drag + pk_no_load
 
-row('T_axial_force',         'F·pitch/(2π·η)',          T_axial,        'Nm')
+row('T_axial_force (accel)', 'F·pitch/(2π·η)',          T_axial,        'Nm')
+row('T_axial_force (decel)', 'F·pitch/(2π·η)',          T_axial_decel,  'Nm')
 row('T_preload',             'bs_preload_torque',        bs_preload_torque_Nm, 'Nm')
 row('T_bearing_drag',        'fixed+support drag',       bs_bearing_drag, 'Nm')
 row('T_pk_no_load',          'pk_no_load_torque',        pk_no_load,     'Nm')
-row('T_bs_load (steady)',    'T_axial+Tpre+Tdrag+Tpk', T_bs_load,      'Nm')
+row('T_bs_load (accel/topspeed)', 'T_axial+Tpre+Tdrag+Tpk', T_bs_load,      'Nm')
+row('T_bs_load (decel)',     'T_axial_decel+Tpre+Tdrag+Tpk', T_bs_load_decel, 'Nm')
 
 sep('INERTIA  (Acceleration Torque sheet)')
 rho    = BS_DENSITY.get(bs_material, 7870)
@@ -214,33 +236,43 @@ row('T_decel',               'J·(N/9.55)/td',           T_decel,        'Nm')
 sep('TOTAL TORQUE PER PHASE @ BALLSCREW  (Total Torque sheet)')
 T_total_accel    = T_bs_load + T_accel
 T_total_topspeed = T_bs_load
-T_total_decel    = T_bs_load - T_decel
+T_total_decel    = T_bs_load_decel - T_decel
 
 row('T during acceleration', 'Tl + Ta',                  T_total_accel,   'Nm')
 row('T during topspeed',     'Tl',                       T_total_topspeed,'Nm')
-row('T during deceleration', 'Tl − Td',                  T_total_decel,   'Nm')
+row('T during deceleration', 'Tl_decel − Td',            T_total_decel,   'Nm')
 
 sep('PEAK TORQUE @ MOTOR')
-SF          = 1 + safety_factor_pct / 100
-T_peak_bs   = max(abs(T_total_accel), abs(T_total_decel)) * SF
-T_peak_motor = T_peak_bs / (eff_ratio * eff_efficiency) + gb_no_load if eff_ratio > 0 else 0
-T_load_motor = abs(T_bs_load) / (eff_ratio * eff_efficiency) + gb_no_load if eff_ratio > 0 else 0
+SF             = 1 + safety_factor_pct / 100
+T_peak_bs_acc  = abs(T_total_accel) * SF
+T_peak_bs_dec  = abs(T_total_decel) * SF
+T_peak_bs      = max(T_peak_bs_acc, T_peak_bs_dec)
+T_peak_accel_motor = T_peak_bs_acc / (eff_ratio * eff_efficiency) + gb_no_load if eff_ratio > 0 else 0
+T_peak_decel_motor = T_peak_bs_dec / (eff_ratio * eff_efficiency) + gb_no_load if eff_ratio > 0 else 0
+T_peak_motor   = max(T_peak_accel_motor, T_peak_decel_motor)
+T_load_motor       = abs(T_bs_load)       / (eff_ratio * eff_efficiency) + gb_no_load if eff_ratio > 0 else 0
+T_load_motor_decel = abs(T_bs_load_decel) / (eff_ratio * eff_efficiency) + gb_no_load if eff_ratio > 0 else 0
 
 row('Safety factor SF',      '1 + SF%/100',              SF)
-row('T_peak @ BS',           'max(|Tacc|,|Tdec|) × SF', T_peak_bs,      'Nm')
-row('T_peak @ motor',        'T_pk_bs/(ratio×η)+Tgbnl', T_peak_motor,   'Nm')
+row('T_peak @ BS (accel)',   '|T_total_accel| × SF',    T_peak_bs_acc,  'Nm')
+row('T_peak @ BS (decel)',   '|T_total_decel| × SF',    T_peak_bs_dec,  'Nm')
+row('T_peak @ BS',           'max(accel, decel)',       T_peak_bs,      'Nm')
+row('T_peak @ motor (accel)','Tpk_bs_acc/(ratio×η)+Tgbnl', T_peak_accel_motor, 'Nm')
+row('T_peak @ motor (decel)','Tpk_bs_dec/(ratio×η)+Tgbnl', T_peak_decel_motor, 'Nm')
+row('T_peak @ motor',        'max(accel, decel)',       T_peak_motor,   'Nm')
 row('T_load @ motor',        '|Tl|/(ratio×η)+Tgbnl',    T_load_motor,   'Nm')
+row('T_load @ motor (decel)','|Tl_decel|/(ratio×η)+Tgbnl', T_load_motor_decel, 'Nm')
 
 sep('RMS TORQUE @ MOTOR')
-Iacc    = (accel_time_s / 3) * (T_load_motor**2 + T_load_motor * T_peak_motor + T_peak_motor**2)
-Idec    = (decel_time_s / 3) * (T_peak_motor**2 + T_peak_motor * T_load_motor + T_load_motor**2)
+Iacc    = (accel_time_s / 3) * (T_load_motor**2 + T_load_motor * T_peak_accel_motor + T_peak_accel_motor**2)
+Idec    = (decel_time_s / 3) * (T_peak_decel_motor**2 + T_peak_decel_motor * T_load_motor_decel + T_load_motor_decel**2)
 Iconst  = T_load_motor**2 * t_const
 total_motion_time = accel_time_s + t_const + decel_time_s
 T_rms_motor = math.sqrt((Iacc + Iconst + Idec) / total_motion_time) if total_motion_time > 0 else 0
 
-row('Energy during accel',   '(ta/3)(Tl²+Tl·Tp+Tp²)',  Iacc)
+row('Energy during accel',   '(ta/3)(Tl²+Tl·Tpa+Tpa²)', Iacc)
 row('Energy during const',   'Tl² × tc',                Iconst)
-row('Energy during decel',   '(td/3)(Tp²+Tp·Tl+Tl²)',  Idec)
+row('Energy during decel',   '(td/3)(Tpd²+Tpd·Tld+Tld²)', Idec)
 row('Total motion time',     'ta+tc+td',                 total_motion_time, 's')
 row('T_rms @ motor',         '√(ΣT²t / total_t)',        T_rms_motor,    'Nm')
 
@@ -257,8 +289,8 @@ def srow(label, value, unit, app_field=''):
     print(fmt.format(label, value, unit, app_field))
 
 srow('Total moving mass',           total_mass,         'kg',    'guide_mass→')
-srow('Axial Force (max abs)',        abs(axial_force),   'N',     'out_axial_force')
-srow('Load Torque @ BS',            abs(T_bs_load),     'Nm',    'out_load_torque')
+srow('Axial Force (max abs)',        max(abs(axial_force), abs(axial_force_decel)), 'N', 'out_axial_force')
+srow('Load Torque @ BS',            max(abs(T_bs_load), abs(T_bs_load_decel)), 'Nm', 'out_load_torque')
 srow('Inertia J_reflected',         J_reflected,        'kg·m²', 'out_inertia_bs')
 srow('Inertia at motor I_motor',    I_motor,            'kg·m²', 'out_inertia')
 srow('Accel torque @ BS',           T_accel,            'Nm',    'out_accel_torque')

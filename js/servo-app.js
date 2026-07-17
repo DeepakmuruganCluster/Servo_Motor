@@ -310,6 +310,41 @@ function renderMetric(id, value, digits = 2, unit = '') {
   element.textContent = typeof value === 'number' && Number.isFinite(value) ? `${value.toFixed(digits)}${unit}` : '—';
 }
 
+/* Dependency cascade for manual component locks. The auto-sync pipeline in render() always runs
+   Motor → Ball Screw → Gearbox → Drive in that order, because each stage's requirements depend
+   on the ones before it. Locking a stage in manually (motor_user_selected / bs_user_selected /
+   gb_ratio_user_selected / sd_user_selected) stops render()'s auto-sync from touching IT, but
+   without this, everything AFTER it in the pipeline would also stay frozen at whatever it was
+   last synced to — silently going stale (e.g. a ball screw locked in for one motor, unaware the
+   designer later picked a different motor). Unlocking downstream stages when an upstream one is
+   manually changed lets them immediately re-suggest the best fit again, matching the auto-sync
+   pipeline's own one-directional dependency order (never unlocks upstream — picking a ball screw
+   deliberately must not silently undo an already-chosen motor). */
+function unlockDownstreamOfMotor() {
+  state.bs_user_selected = false;
+  state.gb_ratio_user_selected = false;
+  state.sd_user_selected = false;
+}
+function unlockDownstreamOfBallScrew() {
+  state.gb_ratio_user_selected = false;
+  state.sd_user_selected = false;
+}
+function unlockDownstreamOfGearbox() {
+  state.sd_user_selected = false;
+}
+
+/* Single entry point for "the designer manually picked this motor" — used by the Motor Catalog
+   row click and the "Use Recommended" button, so the downstream-unlock cascade only needs to
+   live in one place. */
+function selectMotorManually(idx) {
+  selectedMotorIdx = idx;
+  state.motor_user_selected = true;
+  unlockDownstreamOfMotor();
+  saveState();
+  saveMotorSelection();
+  render();
+}
+
 function render() {
   let result = calculate();
   lastResult = result;
@@ -559,11 +594,7 @@ function renderMotorTable(result) {
   tbody.innerHTML = rows;
   tbody.querySelectorAll('tr').forEach(row => {
     row.addEventListener('click', () => {
-      selectedMotorIdx = Number(row.dataset.index);
-      state.motor_user_selected = true;
-      saveState();
-      saveMotorSelection();
-      render();
+      selectMotorManually(Number(row.dataset.index));
     });
   });
 }
@@ -849,11 +880,7 @@ function renderBestMotorSuggestion(result) {
     const applyBtn = document.getElementById('apply-recommended-btn');
     if (applyBtn) {
       applyBtn.onclick = () => {
-        selectedMotorIdx = best.index;
-        state.motor_user_selected = true;
-        saveState();
-        saveMotorSelection();
-        render();
+        selectMotorManually(best.index);
       };
     }
   } else {
@@ -1120,9 +1147,11 @@ function handleInput(event) {
     }
     if (key === 'gb_ratio') {
       state.gb_ratio_user_selected = true;
+      unlockDownstreamOfGearbox();
     }
     if (key === 'bs_pitch' || key === 'bs_dia' || key === 'bs_efficiency' || key === 'bs_preload_torque' || key === 'bs_length') {
       state.bs_user_selected = true;
+      unlockDownstreamOfBallScrew();
     }
     if (key === 'tilt_deg' || key === 'cb_angle_deg') {
       state[key] = Math.min(90, Math.max(0, state[key] || 0));
@@ -2049,16 +2078,6 @@ function init() {
     });
   }
 
-
-  document.getElementById('motor-table-body').addEventListener('click', event => {
-    const row = event.target.closest('tr[data-index]');
-    if (!row) return;
-    selectedMotorIdx = Number(row.dataset.index);
-    state.motor_user_selected = true;
-    saveState();
-    saveMotorSelection();
-    render();
-  });
 
   // Project context banner — injected when launched from project.html
   const urlParams = new URLSearchParams(window.location.search);

@@ -330,6 +330,9 @@
   function applyGearboxSelection(pn) {
     if (!applyGearboxFields(pn)) return;
     state.gb_ratio_user_selected = true;
+    // Drive was only ever suggested for whatever gearbox was configured before — unlock it so it
+    // immediately re-suggests the best fit for this one (js/servo-app.js).
+    if (typeof unlockDownstreamOfGearbox === 'function') unlockDownstreamOfGearbox();
     if (typeof saveState === 'function') saveState();
     if (typeof renderInputs === 'function') renderInputs();
     if (typeof render === 'function') render();

@@ -336,6 +336,9 @@
   function applyBallScrewSelection(pn) {
     if (!applyBallScrewFields(pn)) return;
     state.bs_user_selected = true;
+    // Gearbox/Drive were only ever suggested for whatever ball screw was configured before —
+    // unlock them so they immediately re-suggest the best fit for this one (js/servo-app.js).
+    if (typeof unlockDownstreamOfBallScrew === 'function') unlockDownstreamOfBallScrew();
     if (typeof saveState === 'function') saveState();
     if (typeof renderInputs === 'function') renderInputs();
     if (typeof render === 'function') render();

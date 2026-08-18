@@ -2938,4 +2938,9 @@ function downloadReport(result) {
   doc.save('ClusterVise_Servo_Report.pdf');
 }
 
-window.addEventListener('DOMContentLoaded', init);
+// window.CATALOG_SYNC_READY (js/catalog-sync.js) resolves once the live-data fetch attempt has
+// settled, success or fallback — awaiting it here avoids populating dropdowns from local data and
+// then silently swapping them under the user. Resolves immediately on pages without that script.
+window.addEventListener('DOMContentLoaded', () => {
+  Promise.resolve(window.CATALOG_SYNC_READY).finally(init);
+});

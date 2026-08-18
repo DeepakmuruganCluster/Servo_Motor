@@ -1,23 +1,22 @@
-/* Catalog Sync — pulls live component data from admin.clustervise.com and overwrites the
- * THK_BALLSCREW_DB / SIEMENS_DRIVE_DB / APEX_GEARBOX_DB / MOTOR_DB arrays IN PLACE (same array
- * objects the data/*.js files declared with const — calculations.js and the *-selection.js
- * modules hold no separate reference, they read these globals at call time, so mutating contents
- * here is enough; no reassignment needed, and none would be legal against a const binding anyway).
+/* Catalog Sync — pulls live component data from OUR OWN server (catalog_proxy.py, served by
+ * serve.py at /api/components/) and overwrites the THK_BALLSCREW_DB / SIEMENS_DRIVE_DB /
+ * APEX_GEARBOX_DB / MOTOR_DB arrays IN PLACE (same array objects the data/*.js files declared
+ * with const — calculations.js and the *-selection.js modules hold no separate reference, they
+ * read these globals at call time, so mutating contents here is enough).
  *
- * Requires a read-only DRF endpoint at CATALOG_API_BASE (see project notes for the spec handed
- * off to admin.clustervise.com) returning:
- *   [{ model_number, series, manufacturer, sub_component, parameters: {...} }, ...]
- * filterable via ?sub_component=<name>, and CORS-enabled for this app's origin.
+ * catalog_proxy.py is the thing that actually talks to admin.clustervise.com's Django admin —
+ * the browser never sees those credentials or makes a cross-origin request. This file just hits
+ * our own same-origin API, so no API key is needed here.
  *
- * CATALOG_API_KEY is intentionally blank until admin.clustervise.com issues a scoped, read-only
- * key — never put the Django admin login here, it's shipped to every visitor's browser. With no
- * key set, every sync attempt no-ops immediately and the app runs entirely on the data/*.js files
- * loaded before this script, exactly as it did before this file existed.
+ * CATALOG_API_BASE is a RELATIVE path (no leading slash) so it resolves under whatever prefix
+ * the page is served from — 'api/components/' from https://app.clustervise.com/servo/calculator.html
+ * resolves to https://app.clustervise.com/servo/api/components/, which nginx's /servo/ location
+ * proxies to serve.py as /api/components/. Locally (no /servo/ prefix) it resolves the same way
+ * relative to whatever path serve.py is running at.
  */
-const CATALOG_API_BASE = 'https://admin.clustervise.com/api/components/';
-const CATALOG_API_KEY = '';
+const CATALOG_API_BASE = 'api/components/';
 
-const CATALOG_SYNC_TIMEOUT_MS = 5000;
+const CATALOG_SYNC_TIMEOUT_MS = 8000;
 
 const CATALOG_SYNC_TARGETS = [
   { subComponent: 'Ball Screw',  get db() { return THK_BALLSCREW_DB; } },
@@ -36,10 +35,7 @@ async function syncOneCatalog(target) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), CATALOG_SYNC_TIMEOUT_MS);
   try {
-    const res = await fetch(url, {
-      headers: { 'X-API-Key': CATALOG_API_KEY },
-      signal: controller.signal,
-    });
+    const res = await fetch(url, { signal: controller.signal });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const items = await res.json();
     if (!Array.isArray(items) || items.length === 0) throw new Error('empty response');
@@ -48,7 +44,7 @@ async function syncOneCatalog(target) {
     const db = target.db;
     db.length = 0;
     db.push(...rows);
-    console.info(`[catalog-sync] ${target.subComponent}: loaded ${rows.length} rows from admin.clustervise.com`);
+    console.info(`[catalog-sync] ${target.subComponent}: loaded ${rows.length} rows from Django`);
   } catch (err) {
     console.warn(`[catalog-sync] ${target.subComponent}: using bundled local data (${err.message})`);
   } finally {
@@ -57,6 +53,4 @@ async function syncOneCatalog(target) {
 }
 
 // Always resolves (never rejects) — callers just wait for sync attempts to settle, success or not.
-window.CATALOG_SYNC_READY = CATALOG_API_KEY
-  ? Promise.all(CATALOG_SYNC_TARGETS.map(syncOneCatalog))
-  : Promise.resolve();
+window.CATALOG_SYNC_READY = Promise.all(CATALOG_SYNC_TARGETS.map(syncOneCatalog));

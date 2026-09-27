@@ -623,8 +623,23 @@ function renderSelectedMotorDetails(result) {
         ${r.pn ? `<div style="font-size:12px;color:var(--muted);margin-top:6px;">${r.specs || ''}</div>` : ''}
       </div>`).join('');
 
+  const glbPath = `assets/motor-models/${motor.pn.replace(/-/g, '')}.glb`;
+
   details.innerHTML = `
-    <div class="metric-grid">
+    <div>
+      <model-viewer src="${glbPath}" alt="3D model of ${motor.pn}"
+        camera-controls auto-rotate rotation-per-second="12deg"
+        environment-image="neutral" shadow-intensity="1" shadow-softness="0.8"
+        exposure="1.1" camera-orbit="35deg 70deg auto" field-of-view="30deg"
+        ar ar-modes="webxr scene-viewer quick-look"
+        style="width:100%;height:420px;background:var(--surface-strong);border-radius:12px;border:1px solid var(--border);"
+        onerror="this.closest('div').querySelector('.model-viewer-fallback').style.display='block';this.style.display='none';">
+      </model-viewer>
+      <div class="model-viewer-fallback" style="display:none;font-size:12px;color:var(--muted);padding:12px;">
+        3D preview unavailable for this part.
+      </div>
+    </div>
+    <div class="metric-grid" style="grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));margin-top:16px;">
       <div class="metric-card"><span>Selected Motor</span><strong>${motor.pn}</strong></div>
       <div class="metric-card"><span>Rated Torque Mn</span><strong>${motor.Mn.toFixed(2)} Nm</strong></div>
       <div class="metric-card"><span>Peak Torque Mmax</span><strong>${motor.Mmax.toFixed(2)} Nm</strong></div>
